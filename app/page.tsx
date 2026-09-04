@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
 import {
   BarChart3,
   BookOpen,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
 import {
   NativeSelect,
   NativeSelectOption,
@@ -119,6 +121,8 @@ type TrackerData = {
   notes: NoteEntry[];
   hours: HourEntry[];
 };
+
+type CloudStatus = 'local' | 'loading' | 'saving' | 'saved' | 'error';
 
 type ModelContextTool = {
   name: string;
@@ -465,9 +469,17 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
   const coursesRef = useRef(defaultData.courses);
+  const cloudSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cloudLoaded = useRef(false);
   const [activeCourse, setActiveCourse] = useState(defaultData.courses[0].id);
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
+  const [user, setUser] = useState<User | null>(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authMessage, setAuthMessage] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<CloudStatus>('local');
   const [courseDraft, setCourseDraft] = useState<Course>({
     id: makeId(),
     name: '',
@@ -528,6 +540,89 @@ export default function Home() {
   useEffect(() => {
     coursesRef.current = data.courses;
   }, [data.courses]);
+
+  const loadCloudData = useCallback(
+    async (currentUser = user) => {
+      if (!supabase || !currentUser) return;
+      setCloudStatus('loading');
+      const { data: row, error } = await supabase
+        .from('tracker_profiles')
+        .select('data')
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+
+      if (error) {
+        setCloudStatus('error');
+        setAuthMessage(error.message);
+        return;
+      }
+
+      if (row?.data) {
+        const parsed = normalizeData(row.data as Partial<TrackerData>);
+        setData(parsed);
+        setActiveCourse(parsed.courses[0]?.id ?? '');
+      }
+
+      cloudLoaded.current = true;
+      setCloudStatus(row?.data ? 'saved' : 'local');
+    },
+    [user],
+  );
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    void supabase.auth.getUser().then(({ data: authData }) => {
+      setUser(authData.user);
+      if (authData.user) void loadCloudData(authData.user);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      cloudLoaded.current = false;
+      if (session?.user) {
+        void loadCloudData(session.user);
+      } else {
+        setCloudStatus('local');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [loadCloudData]);
+
+  useEffect(() => {
+    if (!supabase || !user || !cloudLoaded.current || !storageReady) return;
+    const client = supabase;
+    if (cloudSaveTimer.current) clearTimeout(cloudSaveTimer.current);
+
+    cloudSaveTimer.current = setTimeout(() => {
+      setCloudStatus('saving');
+      void client
+        .from('tracker_profiles')
+        .upsert(
+          {
+            user_id: user.id,
+            data,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
+        )
+        .then(({ error }) => {
+          if (error) {
+            setCloudStatus('error');
+            setAuthMessage(error.message);
+            return;
+          }
+          setCloudStatus('saved');
+        });
+    }, 700);
+
+    return () => {
+      if (cloudSaveTimer.current) clearTimeout(cloudSaveTimer.current);
+    };
+  }, [data, storageReady, user]);
 
   const courseById = useMemo(
     () => new Map(data.courses.map((course) => [course.id, course])),
@@ -718,6 +813,40 @@ export default function Home() {
     event.target.value = '';
   };
 
+  const handleAuth = async (mode: 'sign-in' | 'sign-up') => {
+    if (!supabase || !authEmail.trim() || !authPassword) return;
+    setAuthBusy(true);
+    setAuthMessage('');
+
+    const credentials = {
+      email: authEmail.trim(),
+      password: authPassword,
+    };
+    const { error } =
+      mode === 'sign-in'
+        ? await supabase.auth.signInWithPassword(credentials)
+        : await supabase.auth.signUp(credentials);
+
+    if (error) {
+      setAuthMessage(error.message);
+    } else {
+      setAuthMessage(
+        mode === 'sign-up'
+          ? 'Check your email if confirmation is enabled.'
+          : 'Signed in.',
+      );
+    }
+    setAuthBusy(false);
+  };
+
+  const signOut = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    cloudLoaded.current = false;
+    setUser(null);
+    setCloudStatus('local');
+  };
+
   useEffect(() => {
     const context = document.modelContext;
     if (!context?.registerTool) return;
@@ -805,7 +934,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[var(--background)] text-violet-950">
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="pixel-panel grid gap-5 p-4 md:grid-cols-[1fr_auto] md:items-center">
+        <header className="pixel-panel grid gap-5 p-4 xl:grid-cols-[1fr_minmax(280px,420px)_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
             <div className="grid size-12 shrink-0 place-items-center border-2 border-violet-400 bg-violet-200 shadow-[4px_4px_0_#7c3aed]">
               <BookOpen className="size-6" />
@@ -818,6 +947,70 @@ export default function Home() {
                 McGillTrack
               </h1>
             </div>
+          </div>
+          <div className="grid gap-2 border-2 border-violet-300 bg-white/75 p-3 shadow-[3px_3px_0_#c4b5fd]">
+            <div className="flex items-center justify-between gap-3">
+              <p className="truncate text-xs font-black uppercase text-violet-900">
+                {user?.email ?? 'Cloud Account'}
+              </p>
+              <span className="border border-violet-300 bg-violet-100 px-2 py-0.5 text-[11px] font-black uppercase text-violet-800">
+                {supabaseConfigured ? cloudStatus : 'setup'}
+              </span>
+            </div>
+            {supabaseConfigured && user ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void loadCloudData()}
+                  disabled={cloudStatus === 'loading'}
+                >
+                  Load
+                </Button>
+                <Button size="sm" variant="secondary" onClick={signOut}>
+                  Sign out
+                </Button>
+              </div>
+            ) : supabaseConfigured ? (
+              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] xl:grid-cols-2">
+                <TextInput
+                  aria-label="Email"
+                  type="email"
+                  placeholder="email"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                />
+                <TextInput
+                  aria-label="Password"
+                  type="password"
+                  placeholder="password"
+                  value={authPassword}
+                  onChange={(event) => setAuthPassword(event.target.value)}
+                />
+                <Button
+                  size="sm"
+                  onClick={() => void handleAuth('sign-in')}
+                  disabled={authBusy}
+                >
+                  Sign in
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleAuth('sign-up')}
+                  disabled={authBusy}
+                >
+                  Sign up
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs font-bold text-violet-800">
+                Add Supabase env vars.
+              </p>
+            )}
+            {authMessage ? (
+              <p className="text-xs font-bold text-violet-800">{authMessage}</p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={exportData}>
