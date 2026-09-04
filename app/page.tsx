@@ -464,6 +464,7 @@ function MiniStat({
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
+  const coursesRef = useRef(defaultData.courses);
   const [activeCourse, setActiveCourse] = useState(defaultData.courses[0].id);
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
@@ -523,6 +524,10 @@ export default function Home() {
     if (!storageReady) return;
     localStorage.setItem(storageKey, JSON.stringify(data));
   }, [data, storageReady]);
+
+  useEffect(() => {
+    coursesRef.current = data.courses;
+  }, [data.courses]);
 
   const courseById = useMemo(
     () => new Map(data.courses.map((course) => [course.id, course])),
@@ -716,7 +721,6 @@ export default function Home() {
   useEffect(() => {
     const context = document.modelContext;
     if (!context?.registerTool) return;
-    const lifecycle = new AbortController();
     const reportError = (error: unknown) => console.error(error);
 
     try {
@@ -756,7 +760,7 @@ export default function Home() {
               ) {
                 throw new Error('courseId, title, and dueDate are required.');
               }
-              const course = data.courses.find(
+              const course = coursesRef.current.find(
                 (item) => item.id === payload.courseId,
               );
               if (!course) throw new Error('Course not found.');
@@ -791,15 +795,12 @@ export default function Home() {
               };
             },
           },
-          { signal: lifecycle.signal },
         ),
       ).catch(reportError);
     } catch (error) {
       reportError(error);
     }
-
-    return () => lifecycle.abort();
-  }, [data.courses]);
+  }, []);
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-violet-950">
