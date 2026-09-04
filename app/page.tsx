@@ -82,6 +82,17 @@ type ScheduleBlock = {
   location: string;
 };
 
+type OfficeHourBlock = {
+  id: string;
+  courseId: string;
+  day: string;
+  start: string;
+  end: string;
+  teacher: string;
+  office: string;
+  notes: string;
+};
+
 type NoteEntry = {
   id: string;
   courseId: string;
@@ -104,6 +115,7 @@ type TrackerData = {
   courses: Course[];
   assignments: Assignment[];
   schedule: ScheduleBlock[];
+  officeHours: OfficeHourBlock[];
   notes: NoteEntry[];
   hours: HourEntry[];
 };
@@ -268,6 +280,18 @@ const defaultData: TrackerData = {
       location: 'Room B',
     },
   ],
+  officeHours: [
+    {
+      id: 'office-1',
+      courseId: 'course-1',
+      day: 'Tuesday',
+      start: '11:00',
+      end: '12:00',
+      teacher: 'Instructor',
+      office: 'Office A',
+      notes: '',
+    },
+  ],
   notes: [
     {
       id: 'note-1',
@@ -318,6 +342,17 @@ const blankSchedule = (courseId: string): ScheduleBlock => ({
   location: '',
 });
 
+const blankOfficeHour = (courseId: string): OfficeHourBlock => ({
+  id: makeId(),
+  courseId,
+  day: 'Monday',
+  start: '10:00',
+  end: '11:00',
+  teacher: '',
+  office: '',
+  notes: '',
+});
+
 const blankNote = (courseId: string): NoteEntry => ({
   id: makeId(),
   courseId,
@@ -359,6 +394,15 @@ const hoursBetween = (start: string, end: string) => {
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value: number) => (Math.round(value * 10) / 10).toFixed(1);
+
+const normalizeData = (incoming: Partial<TrackerData>): TrackerData => ({
+  courses: incoming.courses ?? defaultData.courses,
+  assignments: incoming.assignments ?? defaultData.assignments,
+  schedule: incoming.schedule ?? defaultData.schedule,
+  officeHours: incoming.officeHours ?? defaultData.officeHours,
+  notes: incoming.notes ?? defaultData.notes,
+  hours: incoming.hours ?? defaultData.hours,
+});
 
 function Field({
   label,
@@ -438,6 +482,9 @@ export default function Home() {
   const [scheduleDraft, setScheduleDraft] = useState<ScheduleBlock>(
     blankSchedule(defaultData.courses[0].id),
   );
+  const [officeHourDraft, setOfficeHourDraft] = useState<OfficeHourBlock>(
+    blankOfficeHour(defaultData.courses[0].id),
+  );
   const [noteDraft, setNoteDraft] = useState<NoteEntry>(
     blankNote(defaultData.courses[0].id),
   );
@@ -448,11 +495,14 @@ export default function Home() {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         try {
-          const parsed = JSON.parse(saved) as TrackerData;
+          const parsed = normalizeData(
+            JSON.parse(saved) as Partial<TrackerData>,
+          );
           setData(parsed);
           setActiveCourse(parsed.courses[0]?.id ?? '');
           setAssignmentDraft(blankAssignment(parsed.courses[0]?.id ?? ''));
           setScheduleDraft(blankSchedule(parsed.courses[0]?.id ?? ''));
+          setOfficeHourDraft(blankOfficeHour(parsed.courses[0]?.id ?? ''));
           setNoteDraft(blankNote(parsed.courses[0]?.id ?? ''));
         } catch {
           localStorage.removeItem(storageKey);
@@ -591,6 +641,17 @@ export default function Home() {
     setScheduleDraft(blankSchedule(scheduleDraft.courseId));
   };
 
+  const addOfficeHour = () => {
+    setData((current) => ({
+      ...current,
+      officeHours: [
+        ...current.officeHours,
+        { ...officeHourDraft, id: makeId() },
+      ],
+    }));
+    setOfficeHourDraft(blankOfficeHour(officeHourDraft.courseId));
+  };
+
   const addNote = () => {
     if (!noteDraft.title.trim() && !noteDraft.body.trim()) return;
     setData((current) => ({
@@ -640,7 +701,9 @@ export default function Home() {
     reader.onload = () => {
       try {
         const contents = typeof reader.result === 'string' ? reader.result : '';
-        const parsed = JSON.parse(contents) as TrackerData;
+        const parsed = normalizeData(
+          JSON.parse(contents) as Partial<TrackerData>,
+        );
         setData(parsed);
       } catch {
         alert('That file could not be imported.');
@@ -812,6 +875,7 @@ export default function Home() {
               <TabsTrigger value="courses">Courses</TabsTrigger>
               <TabsTrigger value="grades">Grades</TabsTrigger>
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
+              <TabsTrigger value="office-hours">Office Hours</TabsTrigger>
               <TabsTrigger value="notes">Notes</TabsTrigger>
               <TabsTrigger value="hours">Hours</TabsTrigger>
             </TabsList>
@@ -1388,7 +1452,7 @@ export default function Home() {
               </Button>
             </section>
 
-            <section className="pixel-panel overflow-hidden p-4">
+            <section className="pixel-panel overflow-x-auto p-4">
               <h2 className="mb-4 text-xl font-black">Weekly Schedule</h2>
               <div className="grid min-w-[760px] grid-cols-5 gap-3">
                 {days.map((day) => (
@@ -1422,6 +1486,169 @@ export default function Home() {
                                 aria-label="Delete schedule block"
                                 className="opacity-0 transition group-hover:opacity-100"
                                 onClick={() => removeItem('schedule', block.id)}
+                              >
+                                <Trash2 className="size-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                ))}
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent
+            value="office-hours"
+            className="grid gap-4 xl:grid-cols-[360px_1fr]"
+          >
+            <section className="pixel-panel grid gap-3 p-4">
+              <h2 className="text-xl font-black">Add Office Hours</h2>
+              <Field label="Course">
+                <CourseSelect
+                  courses={data.courses}
+                  value={officeHourDraft.courseId}
+                  onChange={(value) =>
+                    setOfficeHourDraft({
+                      ...officeHourDraft,
+                      courseId: value,
+                      teacher: courseById.get(value)?.instructor || '',
+                    })
+                  }
+                />
+              </Field>
+              <Field label="Teacher">
+                <TextInput
+                  value={officeHourDraft.teacher}
+                  onChange={(event) =>
+                    setOfficeHourDraft({
+                      ...officeHourDraft,
+                      teacher: event.target.value,
+                    })
+                  }
+                  placeholder="Instructor or TA"
+                />
+              </Field>
+              <Field label="Office">
+                <TextInput
+                  value={officeHourDraft.office}
+                  onChange={(event) =>
+                    setOfficeHourDraft({
+                      ...officeHourDraft,
+                      office: event.target.value,
+                    })
+                  }
+                  placeholder="Office, building, or Zoom link"
+                />
+              </Field>
+              <Field label="Day">
+                <NativeSelect
+                  value={officeHourDraft.day}
+                  onChange={(event) =>
+                    setOfficeHourDraft({
+                      ...officeHourDraft,
+                      day: event.target.value,
+                    })
+                  }
+                >
+                  {days.map((day) => (
+                    <NativeSelectOption key={day} value={day}>
+                      {day}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Start">
+                  <TextInput
+                    type="time"
+                    value={officeHourDraft.start}
+                    onChange={(event) =>
+                      setOfficeHourDraft({
+                        ...officeHourDraft,
+                        start: event.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="End">
+                  <TextInput
+                    type="time"
+                    value={officeHourDraft.end}
+                    onChange={(event) =>
+                      setOfficeHourDraft({
+                        ...officeHourDraft,
+                        end: event.target.value,
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+              <Field label="Notes">
+                <TextInput
+                  value={officeHourDraft.notes}
+                  onChange={(event) =>
+                    setOfficeHourDraft({
+                      ...officeHourDraft,
+                      notes: event.target.value,
+                    })
+                  }
+                  placeholder="Drop-in, appointment, online"
+                />
+              </Field>
+              <Button onClick={addOfficeHour}>
+                <Plus data-icon="inline-start" />
+                Add office hours
+              </Button>
+            </section>
+
+            <section className="pixel-panel overflow-x-auto p-4">
+              <h2 className="mb-4 text-xl font-black">Office Hours</h2>
+              <div className="grid min-w-[760px] grid-cols-5 gap-3">
+                {days.map((day) => (
+                  <div key={day} className="grid content-start gap-2">
+                    <div className="border-2 border-violet-300 bg-violet-100 p-2 text-center text-sm font-black">
+                      {day}
+                    </div>
+                    {data.officeHours
+                      .filter((block) => block.day === day)
+                      .sort((a, b) => a.start.localeCompare(b.start))
+                      .map((block) => {
+                        const course = courseById.get(block.courseId);
+                        return (
+                          <div
+                            key={block.id}
+                            className="group border-2 border-violet-200 bg-white p-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="grid gap-1">
+                                <p className="font-black">
+                                  {course?.name ?? 'Course'}
+                                </p>
+                                <p className="text-xs text-violet-950/65">
+                                  {block.start} - {block.end}
+                                </p>
+                                <p className="text-xs font-semibold">
+                                  {block.teacher ||
+                                    course?.instructor ||
+                                    'Teacher'}
+                                </p>
+                                <p className="text-xs font-semibold text-violet-700">
+                                  {block.office || 'Office'}
+                                </p>
+                                {block.notes ? (
+                                  <p className="text-xs text-violet-950/65">
+                                    {block.notes}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <button
+                                aria-label="Delete office hours"
+                                className="opacity-0 transition group-hover:opacity-100"
+                                onClick={() =>
+                                  removeItem('officeHours', block.id)
+                                }
                               >
                                 <Trash2 className="size-4" />
                               </button>
