@@ -360,18 +360,6 @@ const hoursBetween = (start: string, end: string) => {
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value: number) => (Math.round(value * 10) / 10).toFixed(1);
 
-const readStoredData = () => {
-  if (typeof window === 'undefined') return defaultData;
-  const saved = window.localStorage.getItem(storageKey);
-  if (!saved) return defaultData;
-  try {
-    return JSON.parse(saved) as TrackerData;
-  } catch {
-    window.localStorage.removeItem(storageKey);
-    return defaultData;
-  }
-};
-
 function Field({
   label,
   children,
@@ -431,8 +419,10 @@ function MiniStat({
 
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [data, setData] = useState<TrackerData>(readStoredData);
-  const [activeCourse, setActiveCourse] = useState(data.courses[0]?.id ?? '');
+  const [data, setData] = useState<TrackerData>(defaultData);
+  const [activeCourse, setActiveCourse] = useState(defaultData.courses[0].id);
+  const [storageReady, setStorageReady] = useState(false);
+  const [dateLabel, setDateLabel] = useState('Today');
   const [courseDraft, setCourseDraft] = useState<Course>({
     id: makeId(),
     name: '',
@@ -454,8 +444,35 @@ export default function Home() {
   const [hourDraft, setHourDraft] = useState<HourEntry>(blankHour());
 
   useEffect(() => {
+    queueMicrotask(() => {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as TrackerData;
+          setData(parsed);
+          setActiveCourse(parsed.courses[0]?.id ?? '');
+          setAssignmentDraft(blankAssignment(parsed.courses[0]?.id ?? ''));
+          setScheduleDraft(blankSchedule(parsed.courses[0]?.id ?? ''));
+          setNoteDraft(blankNote(parsed.courses[0]?.id ?? ''));
+        } catch {
+          localStorage.removeItem(storageKey);
+        }
+      }
+      setDateLabel(
+        new Date().toLocaleDateString(undefined, {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+        }),
+      );
+      setStorageReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
     localStorage.setItem(storageKey, JSON.stringify(data));
-  }, [data]);
+  }, [data, storageReady]);
 
   const courseById = useMemo(
     () => new Map(data.courses.map((course) => [course.id, course])),
@@ -731,11 +748,7 @@ export default function Home() {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase text-violet-800">
-                {new Date().toLocaleDateString(undefined, {
-                  weekday: 'long',
-                  month: 'long',
-                  day: 'numeric',
-                })}
+                {dateLabel}
               </p>
               <h1 className="text-3xl font-black tracking-normal sm:text-4xl">
                 McGillTrack
