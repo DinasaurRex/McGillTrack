@@ -1,5 +1,8 @@
 import type { NextConfig } from 'next';
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  agentRules: false,
+  output: 'export',
+};
 
 export default nextConfig;
