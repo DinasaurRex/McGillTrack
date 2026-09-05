@@ -139,29 +139,6 @@ type TrackerTab =
   | 'notes'
   | 'hours';
 
-type ModelContextTool = {
-  name: string;
-  title?: string;
-  description: string;
-  inputSchema: object;
-  annotations?: {
-    readOnlyHint?: boolean;
-    untrustedContentHint?: boolean;
-  };
-  execute(input: unknown): unknown;
-};
-
-declare global {
-  interface Document {
-    modelContext?: {
-      registerTool: (
-        tool: ModelContextTool,
-        options?: { signal?: AbortSignal },
-      ) => void | Promise<void>;
-    };
-  }
-}
-
 const statuses: Status[] = ['Not Started', 'In Progress', 'Done'];
 const priorities: Priority[] = ['Low', 'Medium', 'High', 'Super High'];
 const assignmentTypes: AssignmentType[] = [
@@ -231,6 +208,10 @@ const tabItems: { label: string; value: TrackerTab }[] = [
   { label: 'Notes', value: 'notes' },
   { label: 'Hours', value: 'hours' },
 ];
+
+const isTrackerTab = (value: string): value is TrackerTab =>
+  tabItems.some((tab) => tab.value === value);
+
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const courseColors = ['#d9c7ff', '#cdb4db', '#ffc8dd', '#bde0fe', '#caffbf'];
 const storageKey = 'mcgilltrack-template-v1';
@@ -523,7 +504,6 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
   const dataRef = useRef(defaultData);
-  const coursesRef = useRef(defaultData.courses);
   const cloudSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cloudLoaded = useRef(false);
   const syncingUserId = useRef<string | null>(null);
@@ -561,6 +541,20 @@ export default function Home() {
   const [hourDraft, setHourDraft] = useState<HourEntry>(blankHour());
 
   useEffect(() => {
+    const syncTabFromHash = () => {
+      const hashValue = window.location.hash.slice(1);
+      if (isTrackerTab(hashValue)) {
+        setActiveTab(hashValue);
+      }
+    };
+
+    syncTabFromHash();
+    window.addEventListener('hashchange', syncTabFromHash);
+
+    return () => window.removeEventListener('hashchange', syncTabFromHash);
+  }, []);
+
+  useEffect(() => {
     queueMicrotask(() => {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
@@ -596,7 +590,6 @@ export default function Home() {
 
   useEffect(() => {
     dataRef.current = data;
-    coursesRef.current = data.courses;
   }, [data]);
 
   const saveCloudData = useCallback(
@@ -985,88 +978,6 @@ export default function Home() {
     }
   };
 
-  useEffect(() => {
-    const context = document.modelContext;
-    if (!context?.registerTool) return;
-    const reportError = (error: unknown) => console.error(error);
-
-    try {
-      void Promise.resolve(
-        context.registerTool({
-          name: 'add_tracker_assignment',
-          title: 'Add tracker assignment',
-          description:
-            'Add one assignment to the McGillTrack assignment list using the same local tracker data as the visible form.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              courseId: { type: 'string' },
-              title: { type: 'string' },
-              type: { type: 'string', enum: assignmentTypes },
-              dueDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
-              priority: { type: 'string', enum: priorities },
-              week: { type: 'string', enum: weeks },
-              weight: { type: 'number', minimum: 0 },
-            },
-            required: ['courseId', 'title', 'dueDate'],
-            additionalProperties: false,
-          },
-          annotations: {
-            readOnlyHint: false,
-            untrustedContentHint: false,
-          },
-          execute(input) {
-            const payload = input as Partial<Assignment>;
-            if (
-              !payload ||
-              typeof payload !== 'object' ||
-              !payload.courseId ||
-              !payload.title ||
-              !payload.dueDate
-            ) {
-              throw new Error('courseId, title, and dueDate are required.');
-            }
-            const course = coursesRef.current.find(
-              (item) => item.id === payload.courseId,
-            );
-            if (!course) throw new Error('Course not found.');
-            const item: Assignment = {
-              ...blankAssignment(course.id),
-              title: String(payload.title),
-              type: assignmentTypes.includes(payload.type as AssignmentType)
-                ? (payload.type as AssignmentType)
-                : 'Assignment',
-              dueDate: String(payload.dueDate),
-              priority: priorities.includes(payload.priority as Priority)
-                ? (payload.priority as Priority)
-                : 'Medium',
-              week: weeks.includes(String(payload.week))
-                ? String(payload.week)
-                : 'Week 1',
-              weight:
-                typeof payload.weight === 'number' &&
-                Number.isFinite(payload.weight)
-                  ? payload.weight
-                  : 0,
-            };
-            setData((current) => ({
-              ...current,
-              assignments: [item, ...current.assignments],
-            }));
-            return {
-              id: item.id,
-              course: course.name,
-              title: item.title,
-              added: true,
-            };
-          },
-        }),
-      ).catch(reportError);
-    } catch (error) {
-      reportError(error);
-    }
-  }, []);
-
   return (
     <main className="min-h-screen bg-[var(--background)] text-violet-950">
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
@@ -1226,7 +1137,6 @@ export default function Home() {
         <div className="grid gap-4">
           <div className="overflow-x-auto">
             <div
-              role="tablist"
               aria-label="Tracker sections"
               className="pixel-tabs inline-flex h-auto min-w-max items-center justify-center bg-violet-100 p-1 text-muted-foreground"
             >
@@ -1234,26 +1144,30 @@ export default function Home() {
                 const selected = activeTab === tab.value;
 
                 return (
-                  <button
+                  <a
                     key={tab.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
+                    href={`#${tab.value}`}
+                    aria-current={selected ? 'page' : undefined}
                     data-active={selected ? '' : undefined}
                     data-slot="tabs-trigger"
                     className="relative inline-flex h-8 items-center justify-center px-3 py-1 text-sm font-medium whitespace-nowrap text-foreground/70 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring data-active:bg-background data-active:text-foreground"
-                    onClick={() => setActiveTab(tab.value)}
+                    onClick={() => {
+                      setActiveTab(tab.value);
+                    }}
                     onMouseDown={() => setActiveTab(tab.value)}
                   >
                     {tab.label}
-                  </button>
+                  </a>
                 );
               })}
             </div>
           </div>
 
           {activeTab === 'overview' ? (
-            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <div
+              id="overview"
+              className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]"
+            >
               <section className="pixel-panel p-4">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
@@ -1365,7 +1279,7 @@ export default function Home() {
           ) : null}
 
           {activeTab === 'assignments' ? (
-            <div className="grid gap-4">
+            <div id="assignments" className="grid gap-4">
               <section className="pixel-panel grid gap-3 p-4 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.7fr_auto]">
                 <Field label="Course">
                   <CourseSelect
@@ -1452,7 +1366,7 @@ export default function Home() {
           ) : null}
 
           {activeTab === 'courses' ? (
-            <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+            <div id="courses" className="grid gap-4 xl:grid-cols-[360px_1fr]">
               <section className="pixel-panel grid gap-3 p-4">
                 <h2 className="text-xl font-black">Add Course</h2>
                 <Field label="Name">
@@ -1620,7 +1534,7 @@ export default function Home() {
           ) : null}
 
           {activeTab === 'grades' ? (
-            <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+            <div id="grades" className="grid gap-4 lg:grid-cols-[1fr_360px]">
               <section className="pixel-panel p-4">
                 <h2 className="mb-4 text-xl font-black">Gradebook</h2>
                 <Table>
@@ -1773,7 +1687,7 @@ export default function Home() {
           ) : null}
 
           {activeTab === 'schedule' ? (
-            <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+            <div id="schedule" className="grid gap-4 xl:grid-cols-[360px_1fr]">
               <section className="pixel-panel grid gap-3 p-4">
                 <h2 className="text-xl font-black">Add Block</h2>
                 <Field label="Course">
@@ -1899,7 +1813,10 @@ export default function Home() {
           ) : null}
 
           {activeTab === 'office-hours' ? (
-            <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+            <div
+              id="office-hours"
+              className="grid gap-4 xl:grid-cols-[360px_1fr]"
+            >
               <section className="pixel-panel grid gap-3 p-4">
                 <h2 className="text-xl font-black">Add Office Hours</h2>
                 <Field label="Course">
@@ -2061,7 +1978,7 @@ export default function Home() {
           ) : null}
 
           {activeTab === 'notes' ? (
-            <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+            <div id="notes" className="grid gap-4 lg:grid-cols-[360px_1fr]">
               <section className="pixel-panel grid gap-3 p-4">
                 <h2 className="text-xl font-black">New Note</h2>
                 <Field label="Course">
@@ -2143,7 +2060,7 @@ export default function Home() {
           ) : null}
 
           {activeTab === 'hours' ? (
-            <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+            <div id="hours" className="grid gap-4 lg:grid-cols-[360px_1fr]">
               <section className="pixel-panel grid gap-3 p-4">
                 <h2 className="text-xl font-black">Log Hours</h2>
                 <Field label="Event">
