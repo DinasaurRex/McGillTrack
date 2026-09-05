@@ -473,6 +473,7 @@ function MiniStat({
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
+  const dataRef = useRef(defaultData);
   const coursesRef = useRef(defaultData.courses);
   const cloudSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cloudLoaded = useRef(false);
@@ -543,8 +544,37 @@ export default function Home() {
   }, [data, storageReady]);
 
   useEffect(() => {
+    dataRef.current = data;
     coursesRef.current = data.courses;
-  }, [data.courses]);
+  }, [data]);
+
+  const saveCloudData = useCallback(
+    async (currentUser = user, trackerData = dataRef.current) => {
+      if (!supabase || !currentUser) return false;
+      setCloudStatus('saving');
+      const { error } = await supabase.from('tracker_profiles').upsert(
+        {
+          user_id: currentUser.id,
+          data: trackerData,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+
+      if (error) {
+        setCloudStatus(
+          error.message.includes('tracker_profiles') ? 'setup' : 'error',
+        );
+        setAuthMessage(cloudErrorMessage(error.message));
+        return false;
+      }
+
+      setCloudStatus('saved');
+      setAuthMessage('Saved to cloud.');
+      return true;
+    },
+    [user],
+  );
 
   const loadCloudData = useCallback(
     async (currentUser = user) => {
@@ -564,6 +594,12 @@ export default function Home() {
         return;
       }
 
+      if (!row?.data) {
+        cloudLoaded.current = true;
+        await saveCloudData(currentUser, dataRef.current);
+        return;
+      }
+
       if (row?.data) {
         const parsed = normalizeData(row.data as Partial<TrackerData>);
         setData(parsed);
@@ -573,7 +609,7 @@ export default function Home() {
       cloudLoaded.current = true;
       setCloudStatus(row?.data ? 'saved' : 'local');
     },
-    [user],
+    [saveCloudData, user],
   );
 
   useEffect(() => {
@@ -601,37 +637,16 @@ export default function Home() {
 
   useEffect(() => {
     if (!supabase || !user || !cloudLoaded.current || !storageReady) return;
-    const client = supabase;
     if (cloudSaveTimer.current) clearTimeout(cloudSaveTimer.current);
 
     cloudSaveTimer.current = setTimeout(() => {
-      setCloudStatus('saving');
-      void client
-        .from('tracker_profiles')
-        .upsert(
-          {
-            user_id: user.id,
-            data,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' },
-        )
-        .then(({ error }) => {
-          if (error) {
-            setCloudStatus(
-              error.message.includes('tracker_profiles') ? 'setup' : 'error',
-            );
-            setAuthMessage(cloudErrorMessage(error.message));
-            return;
-          }
-          setCloudStatus('saved');
-        });
+      void saveCloudData(user, data);
     }, 700);
 
     return () => {
       if (cloudSaveTimer.current) clearTimeout(cloudSaveTimer.current);
     };
-  }, [data, storageReady, user]);
+  }, [data, saveCloudData, storageReady, user]);
 
   const courseById = useMemo(
     () => new Map(data.courses.map((course) => [course.id, course])),
@@ -823,29 +838,48 @@ export default function Home() {
   };
 
   const handleAuth = async (mode: 'sign-in' | 'sign-up') => {
-    if (!supabase || !authEmail.trim() || !authPassword) return;
-    setAuthBusy(true);
-    setAuthMessage('');
-
-    const credentials = {
-      email: authEmail.trim(),
-      password: authPassword,
-    };
-    const { error } =
-      mode === 'sign-in'
-        ? await supabase.auth.signInWithPassword(credentials)
-        : await supabase.auth.signUp(credentials);
-
-    if (error) {
-      setAuthMessage(error.message);
-    } else {
-      setAuthMessage(
-        mode === 'sign-up'
-          ? 'Check your email if confirmation is enabled.'
-          : 'Signed in.',
-      );
+    if (!supabase) {
+      setAuthMessage('Supabase is not configured.');
+      return;
     }
-    setAuthBusy(false);
+    if (!authEmail.trim() || !authPassword) {
+      setAuthMessage('Enter an email and password.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthMessage(mode === 'sign-in' ? 'Signing in...' : 'Creating account...');
+
+    try {
+      const credentials = {
+        email: authEmail.trim(),
+        password: authPassword,
+      };
+      const { data: authData, error } =
+        mode === 'sign-in'
+          ? await supabase.auth.signInWithPassword(credentials)
+          : await supabase.auth.signUp(credentials);
+
+      if (error) {
+        setAuthMessage(error.message);
+      } else {
+        const currentUser = authData.user;
+        if (currentUser) {
+          setUser(currentUser);
+          await loadCloudData(currentUser);
+        }
+        setAuthMessage(
+          mode === 'sign-up'
+            ? 'Account created. Check email if confirmation is enabled.'
+            : 'Signed in.',
+        );
+      }
+    } catch (error) {
+      setAuthMessage(
+        error instanceof Error ? error.message : 'Auth request failed.',
+      );
+    } finally {
+      setAuthBusy(false);
+    }
   };
 
   const signOut = async () => {
@@ -981,13 +1015,20 @@ export default function Home() {
                 </Button>
               </div>
             ) : supabaseConfigured ? (
-              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] xl:grid-cols-2">
+              <form
+                className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] xl:grid-cols-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleAuth('sign-in');
+                }}
+              >
                 <TextInput
                   aria-label="Email"
                   type="email"
                   placeholder="email"
                   value={authEmail}
                   onChange={(event) => setAuthEmail(event.target.value)}
+                  autoComplete="email"
                 />
                 <TextInput
                   aria-label="Password"
@@ -995,23 +1036,25 @@ export default function Home() {
                   placeholder="password"
                   value={authPassword}
                   onChange={(event) => setAuthPassword(event.target.value)}
+                  autoComplete="current-password"
                 />
                 <Button
                   size="sm"
-                  onClick={() => void handleAuth('sign-in')}
+                  type="submit"
                   disabled={authBusy}
                 >
-                  Sign in
+                  {authBusy ? 'Working...' : 'Sign in'}
                 </Button>
                 <Button
                   size="sm"
+                  type="button"
                   variant="outline"
                   onClick={() => void handleAuth('sign-up')}
                   disabled={authBusy}
                 >
                   Sign up
                 </Button>
-              </div>
+              </form>
             ) : (
               <p className="text-xs font-bold text-violet-800">
                 Add Supabase env vars.
