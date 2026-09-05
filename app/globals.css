@@ -143,6 +143,10 @@ body {
     background: oklch(0.99 0.006 305);
     box-shadow: 3px 3px 0 oklch(0.8 0.1 304);
   }
+
+  [data-slot='tabs-content'][hidden] {
+    display: none !important;
+  }
 }
 
 @layer base {

@@ -130,6 +130,16 @@ type CloudStatus =
   | 'setup'
   | 'offline';
 
+type TrackerTab =
+  | 'overview'
+  | 'assignments'
+  | 'courses'
+  | 'grades'
+  | 'schedule'
+  | 'office-hours'
+  | 'notes'
+  | 'hours';
+
 type ModelContextTool = {
   name: string;
   title?: string;
@@ -178,6 +188,22 @@ const cloudStatusFromError = (message: string): CloudStatus =>
   message.includes('tracker_profiles') || message.includes('schema cache')
     ? 'setup'
     : 'offline';
+
+const withTimeout = async <T,>(
+  promise: PromiseLike<T>,
+  message = 'Cloud request timed out. Your changes are still saved on this device.',
+): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timer = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), 10000);
+  });
+
+  try {
+    return await Promise.race([promise, timer]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+};
 const weeks = [
   'Week 1',
   'Week 2',
@@ -492,6 +518,7 @@ export default function Home() {
   const cloudLoaded = useRef(false);
   const syncingUserId = useRef<string | null>(null);
   const [activeCourse, setActiveCourse] = useState(defaultData.courses[0].id);
+  const [activeTab, setActiveTab] = useState<TrackerTab>('overview');
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
   const [user, setUser] = useState<User | null>(null);
@@ -568,13 +595,15 @@ export default function Home() {
       setCloudStatus('saving');
 
       try {
-        const { error } = await supabase.from('tracker_profiles').upsert(
-          {
-            user_id: currentUser.id,
-            data: trackerData,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' },
+        const { error } = await withTimeout(
+          supabase.from('tracker_profiles').upsert(
+            {
+              user_id: currentUser.id,
+              data: trackerData,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id' },
+          ),
         );
 
         if (error) {
@@ -603,14 +632,15 @@ export default function Home() {
       if (!supabase || !currentUser) return;
       if (syncingUserId.current === currentUser.id) return;
       syncingUserId.current = currentUser.id;
-      setCloudStatus('loading');
 
       try {
-        const { data: row, error } = await supabase
-          .from('tracker_profiles')
-          .select('data')
-          .eq('user_id', currentUser.id)
-          .maybeSingle();
+        const { data: row, error } = await withTimeout(
+          supabase
+            .from('tracker_profiles')
+            .select('data')
+            .eq('user_id', currentUser.id)
+            .maybeSingle(),
+        );
 
         if (error) {
           setCloudStatus(cloudStatusFromError(error.message));
@@ -899,10 +929,12 @@ export default function Home() {
         email: authEmail.trim(),
         password: authPassword,
       };
-      const { data: authData, error } =
+      const { data: authData, error } = await withTimeout(
         mode === 'sign-in'
-          ? await supabase.auth.signInWithPassword(credentials)
-          : await supabase.auth.signUp(credentials);
+          ? supabase.auth.signInWithPassword(credentials)
+          : supabase.auth.signUp(credentials),
+        'Auth request timed out.',
+      );
 
       if (error) {
         setAuthMessage(error.message);
@@ -931,10 +963,16 @@ export default function Home() {
 
   const signOut = async () => {
     if (!supabase) return;
-    await supabase.auth.signOut();
+    setAuthBusy(true);
+    setAuthMessage('');
     cloudLoaded.current = false;
     setUser(null);
     setCloudStatus('local');
+    try {
+      await withTimeout(supabase.auth.signOut(), 'Sign out timed out.');
+    } finally {
+      setAuthBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -1036,8 +1074,8 @@ export default function Home() {
               </h1>
             </div>
           </div>
-          <div className="flex flex-row-reverse flex-wrap items-start justify-start gap-4 xl:col-start-2 xl:row-start-1 xl:justify-self-end">
-            <div className="grid w-full max-w-[420px] gap-2 border-2 border-violet-300 bg-white/75 p-3 shadow-[3px_3px_0_#c4b5fd] sm:w-[420px]">
+          <div className="flex flex-wrap items-start justify-end gap-3 xl:col-start-2 xl:row-start-1 xl:justify-self-end">
+            <div className="order-2 grid w-full max-w-[420px] gap-2 border-2 border-violet-300 bg-white/75 p-3 shadow-[3px_3px_0_#c4b5fd] sm:w-[420px]">
               <div className="flex items-center justify-between gap-3">
                 <p className="truncate text-xs font-black uppercase text-violet-900">
                   {user?.email ?? 'Cloud Account'}
@@ -1050,13 +1088,29 @@ export default function Home() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
+                    type="button"
                     variant="outline"
                     onClick={() => void loadCloudData()}
-                    disabled={cloudStatus === 'loading'}
+                    disabled={authBusy}
                   >
                     Load
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={signOut}>
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                    onClick={() => void saveCloudData()}
+                    disabled={authBusy || cloudStatus === 'saving'}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                    onClick={signOut}
+                    disabled={authBusy}
+                  >
                     Sign out
                   </Button>
                 </div>
@@ -1108,19 +1162,20 @@ export default function Home() {
                 </p>
               ) : null}
             </div>
-            <div className="flex flex-wrap justify-end gap-2 pt-5">
-              <Button variant="outline" onClick={exportData}>
+            <div className="order-1 flex flex-wrap justify-end gap-2 pt-5">
+              <Button type="button" variant="outline" onClick={exportData}>
                 <Download data-icon="inline-start" />
                 Export
               </Button>
               <Button
+                type="button"
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Upload data-icon="inline-start" />
                 Import
               </Button>
-              <Button variant="secondary" onClick={resetTemplate}>
+              <Button type="button" variant="secondary" onClick={resetTemplate}>
                 <RotateCcw data-icon="inline-start" />
                 Reset
               </Button>
@@ -1158,7 +1213,11 @@ export default function Home() {
           />
         </section>
 
-        <Tabs defaultValue="overview" className="gap-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as TrackerTab)}
+          className="gap-4"
+        >
           <div className="overflow-x-auto">
             <TabsList className="pixel-tabs h-auto min-w-max bg-violet-100 p-1">
               <TabsTrigger value="overview">Overview</TabsTrigger>
