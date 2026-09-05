@@ -32,7 +32,11 @@ export const updateSession = async (request: NextRequest) => {
     },
   });
 
-  await supabase.auth.getUser();
+  try {
+    await supabase.auth.getClaims();
+  } catch {
+    return response;
+  }
 
   return response;
 };

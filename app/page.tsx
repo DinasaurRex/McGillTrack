@@ -122,7 +122,13 @@ type TrackerData = {
   hours: HourEntry[];
 };
 
-type CloudStatus = 'local' | 'loading' | 'saving' | 'saved' | 'setup' | 'error';
+type CloudStatus =
+  | 'local'
+  | 'loading'
+  | 'saving'
+  | 'saved'
+  | 'setup'
+  | 'offline';
 
 type ModelContextTool = {
   name: string;
@@ -166,7 +172,12 @@ const cloudErrorMessage = (message: string) =>
     ? 'Cloud setup needed: run supabase/tracker_profiles.sql in Supabase.'
     : message.toLowerCase().includes('failed to fetch')
       ? 'Cloud connection failed. Your changes are still saved on this device.'
-    : message;
+      : message;
+
+const cloudStatusFromError = (message: string): CloudStatus =>
+  message.includes('tracker_profiles') || message.includes('schema cache')
+    ? 'setup'
+    : 'offline';
 const weeks = [
   'Week 1',
   'Week 2',
@@ -567,14 +578,12 @@ export default function Home() {
         );
 
         if (error) {
-          setCloudStatus(
-            error.message.includes('tracker_profiles') ? 'setup' : 'error',
-          );
+          setCloudStatus(cloudStatusFromError(error.message));
           setAuthMessage(cloudErrorMessage(error.message));
           return false;
         }
       } catch (error) {
-        setCloudStatus('error');
+        setCloudStatus('offline');
         setAuthMessage(
           cloudErrorMessage(
             error instanceof Error ? error.message : 'Cloud request failed.',
@@ -604,9 +613,7 @@ export default function Home() {
           .maybeSingle();
 
         if (error) {
-          setCloudStatus(
-            error.message.includes('tracker_profiles') ? 'setup' : 'error',
-          );
+          setCloudStatus(cloudStatusFromError(error.message));
           setAuthMessage(cloudErrorMessage(error.message));
           return;
         }
@@ -623,7 +630,7 @@ export default function Home() {
         setActiveCourse(parsed.courses[0]?.id ?? '');
         setCloudStatus('saved');
       } catch (error) {
-        setCloudStatus('error');
+        setCloudStatus('offline');
         setAuthMessage(
           cloudErrorMessage(
             error instanceof Error ? error.message : 'Cloud request failed.',
@@ -726,6 +733,15 @@ export default function Home() {
     assignmentMetrics.total > 0
       ? assignmentMetrics.done / assignmentMetrics.total
       : 0;
+  const cloudStatusLabel = !supabaseConfigured
+    ? 'setup'
+    : user
+      ? cloudStatus === 'setup' || cloudStatus === 'offline'
+        ? cloudStatus
+        : cloudStatus === 'saving'
+          ? 'saving'
+          : 'saved'
+      : 'local';
 
   const updateAssignment = <K extends keyof Assignment>(
     id: string,
@@ -874,7 +890,9 @@ export default function Home() {
       return;
     }
     setAuthBusy(true);
-    setAuthMessage(mode === 'sign-in' ? 'Signing in...' : 'Creating account...');
+    setAuthMessage(
+      mode === 'sign-in' ? 'Signing in...' : 'Creating account...',
+    );
 
     try {
       const credentials = {
@@ -926,77 +944,75 @@ export default function Home() {
 
     try {
       void Promise.resolve(
-        context.registerTool(
-          {
-            name: 'add_tracker_assignment',
-            title: 'Add tracker assignment',
-            description:
-              'Add one assignment to the McGillTrack assignment list using the same local tracker data as the visible form.',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                courseId: { type: 'string' },
-                title: { type: 'string' },
-                type: { type: 'string', enum: assignmentTypes },
-                dueDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
-                priority: { type: 'string', enum: priorities },
-                week: { type: 'string', enum: weeks },
-                weight: { type: 'number', minimum: 0 },
-              },
-              required: ['courseId', 'title', 'dueDate'],
-              additionalProperties: false,
+        context.registerTool({
+          name: 'add_tracker_assignment',
+          title: 'Add tracker assignment',
+          description:
+            'Add one assignment to the McGillTrack assignment list using the same local tracker data as the visible form.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              courseId: { type: 'string' },
+              title: { type: 'string' },
+              type: { type: 'string', enum: assignmentTypes },
+              dueDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+              priority: { type: 'string', enum: priorities },
+              week: { type: 'string', enum: weeks },
+              weight: { type: 'number', minimum: 0 },
             },
-            annotations: {
-              readOnlyHint: false,
-              untrustedContentHint: false,
-            },
-            execute(input) {
-              const payload = input as Partial<Assignment>;
-              if (
-                !payload ||
-                typeof payload !== 'object' ||
-                !payload.courseId ||
-                !payload.title ||
-                !payload.dueDate
-              ) {
-                throw new Error('courseId, title, and dueDate are required.');
-              }
-              const course = coursesRef.current.find(
-                (item) => item.id === payload.courseId,
-              );
-              if (!course) throw new Error('Course not found.');
-              const item: Assignment = {
-                ...blankAssignment(course.id),
-                title: String(payload.title),
-                type: assignmentTypes.includes(payload.type as AssignmentType)
-                  ? (payload.type as AssignmentType)
-                  : 'Assignment',
-                dueDate: String(payload.dueDate),
-                priority: priorities.includes(payload.priority as Priority)
-                  ? (payload.priority as Priority)
-                  : 'Medium',
-                week: weeks.includes(String(payload.week))
-                  ? String(payload.week)
-                  : 'Week 1',
-                weight:
-                  typeof payload.weight === 'number' &&
-                  Number.isFinite(payload.weight)
-                    ? payload.weight
-                    : 0,
-              };
-              setData((current) => ({
-                ...current,
-                assignments: [item, ...current.assignments],
-              }));
-              return {
-                id: item.id,
-                course: course.name,
-                title: item.title,
-                added: true,
-              };
-            },
+            required: ['courseId', 'title', 'dueDate'],
+            additionalProperties: false,
           },
-        ),
+          annotations: {
+            readOnlyHint: false,
+            untrustedContentHint: false,
+          },
+          execute(input) {
+            const payload = input as Partial<Assignment>;
+            if (
+              !payload ||
+              typeof payload !== 'object' ||
+              !payload.courseId ||
+              !payload.title ||
+              !payload.dueDate
+            ) {
+              throw new Error('courseId, title, and dueDate are required.');
+            }
+            const course = coursesRef.current.find(
+              (item) => item.id === payload.courseId,
+            );
+            if (!course) throw new Error('Course not found.');
+            const item: Assignment = {
+              ...blankAssignment(course.id),
+              title: String(payload.title),
+              type: assignmentTypes.includes(payload.type as AssignmentType)
+                ? (payload.type as AssignmentType)
+                : 'Assignment',
+              dueDate: String(payload.dueDate),
+              priority: priorities.includes(payload.priority as Priority)
+                ? (payload.priority as Priority)
+                : 'Medium',
+              week: weeks.includes(String(payload.week))
+                ? String(payload.week)
+                : 'Week 1',
+              weight:
+                typeof payload.weight === 'number' &&
+                Number.isFinite(payload.weight)
+                  ? payload.weight
+                  : 0,
+            };
+            setData((current) => ({
+              ...current,
+              assignments: [item, ...current.assignments],
+            }));
+            return {
+              id: item.id,
+              course: course.name,
+              title: item.title,
+              added: true,
+            };
+          },
+        }),
       ).catch(reportError);
     } catch (error) {
       reportError(error);
@@ -1006,7 +1022,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[var(--background)] text-violet-950">
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="pixel-panel grid gap-5 p-4 xl:grid-cols-[1fr_auto_minmax(280px,420px)] xl:items-center">
+        <header className="pixel-panel grid gap-5 p-4 xl:grid-cols-[1fr_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
             <div className="grid size-12 shrink-0 place-items-center border-2 border-violet-400 bg-violet-200 shadow-[4px_4px_0_#7c3aed]">
               <BookOpen className="size-6" />
@@ -1020,102 +1036,102 @@ export default function Home() {
               </h1>
             </div>
           </div>
-          <div className="grid gap-2 border-2 border-violet-300 bg-white/75 p-3 shadow-[3px_3px_0_#c4b5fd] xl:col-start-3 xl:row-start-1 xl:justify-self-end">
-            <div className="flex items-center justify-between gap-3">
-              <p className="truncate text-xs font-black uppercase text-violet-900">
-                {user?.email ?? 'Cloud Account'}
-              </p>
-              <span className="border border-violet-300 bg-violet-100 px-2 py-0.5 text-[11px] font-black uppercase text-violet-800">
-                {supabaseConfigured ? cloudStatus : 'setup'}
-              </span>
-            </div>
-            {supabaseConfigured && user ? (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void loadCloudData()}
-                  disabled={cloudStatus === 'loading'}
-                >
-                  Load
-                </Button>
-                <Button size="sm" variant="secondary" onClick={signOut}>
-                  Sign out
-                </Button>
+          <div className="flex flex-row-reverse flex-wrap items-start justify-start gap-4 xl:col-start-2 xl:row-start-1 xl:justify-self-end">
+            <div className="grid w-full max-w-[420px] gap-2 border-2 border-violet-300 bg-white/75 p-3 shadow-[3px_3px_0_#c4b5fd] sm:w-[420px]">
+              <div className="flex items-center justify-between gap-3">
+                <p className="truncate text-xs font-black uppercase text-violet-900">
+                  {user?.email ?? 'Cloud Account'}
+                </p>
+                <span className="border border-violet-300 bg-violet-100 px-2 py-0.5 text-[11px] font-black uppercase text-violet-800">
+                  {cloudStatusLabel}
+                </span>
               </div>
-            ) : supabaseConfigured ? (
-              <form
-                className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] xl:grid-cols-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void handleAuth('sign-in');
-                }}
+              {supabaseConfigured && user ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void loadCloudData()}
+                    disabled={cloudStatus === 'loading'}
+                  >
+                    Load
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={signOut}>
+                    Sign out
+                  </Button>
+                </div>
+              ) : supabaseConfigured ? (
+                <form
+                  className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] xl:grid-cols-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleAuth('sign-in');
+                  }}
+                >
+                  <TextInput
+                    aria-label="Email"
+                    type="email"
+                    placeholder="email"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    autoComplete="email"
+                  />
+                  <TextInput
+                    aria-label="Password"
+                    type="password"
+                    placeholder="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    autoComplete="current-password"
+                  />
+                  <Button size="sm" type="submit" disabled={authBusy}>
+                    {authBusy ? 'Working...' : 'Sign in'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleAuth('sign-up')}
+                    disabled={authBusy}
+                  >
+                    Sign up
+                  </Button>
+                </form>
+              ) : (
+                <p className="text-xs font-bold text-violet-800">
+                  Add Supabase env vars.
+                </p>
+              )}
+              {authMessage ? (
+                <p className="text-xs font-bold text-violet-800">
+                  {authMessage}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 pt-5">
+              <Button variant="outline" onClick={exportData}>
+                <Download data-icon="inline-start" />
+                Export
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
               >
-                <TextInput
-                  aria-label="Email"
-                  type="email"
-                  placeholder="email"
-                  value={authEmail}
-                  onChange={(event) => setAuthEmail(event.target.value)}
-                  autoComplete="email"
-                />
-                <TextInput
-                  aria-label="Password"
-                  type="password"
-                  placeholder="password"
-                  value={authPassword}
-                  onChange={(event) => setAuthPassword(event.target.value)}
-                  autoComplete="current-password"
-                />
-                <Button
-                  size="sm"
-                  type="submit"
-                  disabled={authBusy}
-                >
-                  {authBusy ? 'Working...' : 'Sign in'}
-                </Button>
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                  onClick={() => void handleAuth('sign-up')}
-                  disabled={authBusy}
-                >
-                  Sign up
-                </Button>
-              </form>
-            ) : (
-              <p className="text-xs font-bold text-violet-800">
-                Add Supabase env vars.
-              </p>
-            )}
-            {authMessage ? (
-              <p className="text-xs font-bold text-violet-800">{authMessage}</p>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap gap-2 xl:col-start-2 xl:row-start-1 xl:justify-self-end">
-            <Button variant="outline" onClick={exportData}>
-              <Download data-icon="inline-start" />
-              Export
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload data-icon="inline-start" />
-              Import
-            </Button>
-            <Button variant="secondary" onClick={resetTemplate}>
-              <RotateCcw data-icon="inline-start" />
-              Reset
-            </Button>
-            <input
-              ref={fileInputRef}
-              className="hidden"
-              type="file"
-              accept="application/json"
-              onChange={importData}
-            />
+                <Upload data-icon="inline-start" />
+                Import
+              </Button>
+              <Button variant="secondary" onClick={resetTemplate}>
+                <RotateCcw data-icon="inline-start" />
+                Reset
+              </Button>
+              <input
+                ref={fileInputRef}
+                className="hidden"
+                type="file"
+                accept="application/json"
+                onChange={importData}
+              />
+            </div>
           </div>
         </header>
 
