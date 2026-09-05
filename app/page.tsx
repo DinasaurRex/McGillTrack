@@ -122,7 +122,7 @@ type TrackerData = {
   hours: HourEntry[];
 };
 
-type CloudStatus = 'local' | 'loading' | 'saving' | 'saved' | 'error';
+type CloudStatus = 'local' | 'loading' | 'saving' | 'saved' | 'setup' | 'error';
 
 type ModelContextTool = {
   name: string;
@@ -160,6 +160,11 @@ const assignmentTypes: AssignmentType[] = [
   'Test',
   'Final',
 ];
+
+const cloudErrorMessage = (message: string) =>
+  message.includes('tracker_profiles') || message.includes('schema cache')
+    ? 'Cloud setup needed: run supabase/tracker_profiles.sql in Supabase.'
+    : message;
 const weeks = [
   'Week 1',
   'Week 2',
@@ -552,8 +557,10 @@ export default function Home() {
         .maybeSingle();
 
       if (error) {
-        setCloudStatus('error');
-        setAuthMessage(error.message);
+        setCloudStatus(
+          error.message.includes('tracker_profiles') ? 'setup' : 'error',
+        );
+        setAuthMessage(cloudErrorMessage(error.message));
         return;
       }
 
@@ -611,8 +618,10 @@ export default function Home() {
         )
         .then(({ error }) => {
           if (error) {
-            setCloudStatus('error');
-            setAuthMessage(error.message);
+            setCloudStatus(
+              error.message.includes('tracker_profiles') ? 'setup' : 'error',
+            );
+            setAuthMessage(cloudErrorMessage(error.message));
             return;
           }
           setCloudStatus('saved');
