@@ -164,6 +164,8 @@ const assignmentTypes: AssignmentType[] = [
 const cloudErrorMessage = (message: string) =>
   message.includes('tracker_profiles') || message.includes('schema cache')
     ? 'Cloud setup needed: run supabase/tracker_profiles.sql in Supabase.'
+    : message.toLowerCase().includes('failed to fetch')
+      ? 'Cloud connection failed. Your changes are still saved on this device.'
     : message;
 const weeks = [
   'Week 1',
@@ -477,6 +479,7 @@ export default function Home() {
   const coursesRef = useRef(defaultData.courses);
   const cloudSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cloudLoaded = useRef(false);
+  const syncingUserId = useRef<string | null>(null);
   const [activeCourse, setActiveCourse] = useState(defaultData.courses[0].id);
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
@@ -552,25 +555,35 @@ export default function Home() {
     async (currentUser = user, trackerData = dataRef.current) => {
       if (!supabase || !currentUser) return false;
       setCloudStatus('saving');
-      const { error } = await supabase.from('tracker_profiles').upsert(
-        {
-          user_id: currentUser.id,
-          data: trackerData,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' },
-      );
 
-      if (error) {
-        setCloudStatus(
-          error.message.includes('tracker_profiles') ? 'setup' : 'error',
+      try {
+        const { error } = await supabase.from('tracker_profiles').upsert(
+          {
+            user_id: currentUser.id,
+            data: trackerData,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
         );
-        setAuthMessage(cloudErrorMessage(error.message));
+
+        if (error) {
+          setCloudStatus(
+            error.message.includes('tracker_profiles') ? 'setup' : 'error',
+          );
+          setAuthMessage(cloudErrorMessage(error.message));
+          return false;
+        }
+      } catch (error) {
+        setCloudStatus('error');
+        setAuthMessage(
+          cloudErrorMessage(
+            error instanceof Error ? error.message : 'Cloud request failed.',
+          ),
+        );
         return false;
       }
 
       setCloudStatus('saved');
-      setAuthMessage('Saved to cloud.');
       return true;
     },
     [user],
@@ -579,35 +592,46 @@ export default function Home() {
   const loadCloudData = useCallback(
     async (currentUser = user) => {
       if (!supabase || !currentUser) return;
+      if (syncingUserId.current === currentUser.id) return;
+      syncingUserId.current = currentUser.id;
       setCloudStatus('loading');
-      const { data: row, error } = await supabase
-        .from('tracker_profiles')
-        .select('data')
-        .eq('user_id', currentUser.id)
-        .maybeSingle();
 
-      if (error) {
-        setCloudStatus(
-          error.message.includes('tracker_profiles') ? 'setup' : 'error',
-        );
-        setAuthMessage(cloudErrorMessage(error.message));
-        return;
-      }
+      try {
+        const { data: row, error } = await supabase
+          .from('tracker_profiles')
+          .select('data')
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
 
-      if (!row?.data) {
+        if (error) {
+          setCloudStatus(
+            error.message.includes('tracker_profiles') ? 'setup' : 'error',
+          );
+          setAuthMessage(cloudErrorMessage(error.message));
+          return;
+        }
+
         cloudLoaded.current = true;
-        await saveCloudData(currentUser, dataRef.current);
-        return;
-      }
 
-      if (row?.data) {
+        if (!row?.data) {
+          await saveCloudData(currentUser, dataRef.current);
+          return;
+        }
+
         const parsed = normalizeData(row.data as Partial<TrackerData>);
         setData(parsed);
         setActiveCourse(parsed.courses[0]?.id ?? '');
+        setCloudStatus('saved');
+      } catch (error) {
+        setCloudStatus('error');
+        setAuthMessage(
+          cloudErrorMessage(
+            error instanceof Error ? error.message : 'Cloud request failed.',
+          ),
+        );
+      } finally {
+        syncingUserId.current = null;
       }
-
-      cloudLoaded.current = true;
-      setCloudStatus(row?.data ? 'saved' : 'local');
     },
     [saveCloudData, user],
   );
@@ -615,19 +639,22 @@ export default function Home() {
   useEffect(() => {
     if (!supabase) return;
 
-    void supabase.auth.getUser().then(({ data: authData }) => {
-      setUser(authData.user);
-      if (authData.user) void loadCloudData(authData.user);
+    void supabase.auth.getSession().then(({ data: authData }) => {
+      const currentUser = authData.session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) void loadCloudData(currentUser);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') return;
       setUser(session?.user ?? null);
-      cloudLoaded.current = false;
       if (session?.user) {
+        cloudLoaded.current = false;
         void loadCloudData(session.user);
       } else {
+        cloudLoaded.current = false;
         setCloudStatus('local');
       }
     });
@@ -865,8 +892,10 @@ export default function Home() {
         const currentUser = authData.user;
         if (currentUser) {
           setUser(currentUser);
+          cloudLoaded.current = false;
           await loadCloudData(currentUser);
         }
+        setAuthPassword('');
         setAuthMessage(
           mode === 'sign-up'
             ? 'Account created. Check email if confirmation is enabled.'
@@ -977,7 +1006,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[var(--background)] text-violet-950">
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="pixel-panel grid gap-5 p-4 xl:grid-cols-[1fr_minmax(280px,420px)_auto] xl:items-center">
+        <header className="pixel-panel grid gap-5 p-4 xl:grid-cols-[1fr_auto_minmax(280px,420px)] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
             <div className="grid size-12 shrink-0 place-items-center border-2 border-violet-400 bg-violet-200 shadow-[4px_4px_0_#7c3aed]">
               <BookOpen className="size-6" />
@@ -991,7 +1020,7 @@ export default function Home() {
               </h1>
             </div>
           </div>
-          <div className="grid gap-2 border-2 border-violet-300 bg-white/75 p-3 shadow-[3px_3px_0_#c4b5fd]">
+          <div className="grid gap-2 border-2 border-violet-300 bg-white/75 p-3 shadow-[3px_3px_0_#c4b5fd] xl:col-start-3 xl:row-start-1 xl:justify-self-end">
             <div className="flex items-center justify-between gap-3">
               <p className="truncate text-xs font-black uppercase text-violet-900">
                 {user?.email ?? 'Cloud Account'}
@@ -1064,7 +1093,7 @@ export default function Home() {
               <p className="text-xs font-bold text-violet-800">{authMessage}</p>
             ) : null}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 xl:col-start-2 xl:row-start-1 xl:justify-self-end">
             <Button variant="outline" onClick={exportData}>
               <Download data-icon="inline-start" />
               Export
