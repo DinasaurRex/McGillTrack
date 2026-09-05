@@ -23,7 +23,6 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select';
 import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -220,6 +219,17 @@ const weeks = [
   'Week 13',
   'Week 14',
   'Finals Week',
+];
+
+const tabItems: { label: string; value: TrackerTab }[] = [
+  { label: 'Overview', value: 'overview' },
+  { label: 'Assignments', value: 'assignments' },
+  { label: 'Courses', value: 'courses' },
+  { label: 'Grades', value: 'grades' },
+  { label: 'Schedule', value: 'schedule' },
+  { label: 'Office Hours', value: 'office-hours' },
+  { label: 'Notes', value: 'notes' },
+  { label: 'Hours', value: 'hours' },
 ];
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const courseColors = ['#d9c7ff', '#cdb4db', '#ffc8dd', '#bde0fe', '#caffbf'];
@@ -1213,997 +1223,1045 @@ export default function Home() {
           />
         </section>
 
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as TrackerTab)}
-          className="gap-4"
-        >
+        <div className="grid gap-4">
           <div className="overflow-x-auto">
-            <TabsList className="pixel-tabs h-auto min-w-max bg-violet-100 p-1">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="assignments">Assignments</TabsTrigger>
-              <TabsTrigger value="courses">Courses</TabsTrigger>
-              <TabsTrigger value="grades">Grades</TabsTrigger>
-              <TabsTrigger value="schedule">Schedule</TabsTrigger>
-              <TabsTrigger value="office-hours">Office Hours</TabsTrigger>
-              <TabsTrigger value="notes">Notes</TabsTrigger>
-              <TabsTrigger value="hours">Hours</TabsTrigger>
-            </TabsList>
+            <div
+              role="tablist"
+              aria-label="Tracker sections"
+              className="pixel-tabs inline-flex h-auto min-w-max items-center justify-center bg-violet-100 p-1 text-muted-foreground"
+            >
+              {tabItems.map((tab) => {
+                const selected = activeTab === tab.value;
+
+                return (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    data-active={selected ? '' : undefined}
+                    data-slot="tabs-trigger"
+                    className="relative inline-flex h-8 items-center justify-center px-3 py-1 text-sm font-medium whitespace-nowrap text-foreground/70 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring data-active:bg-background data-active:text-foreground"
+                    onClick={() => setActiveTab(tab.value)}
+                    onMouseDown={() => setActiveTab(tab.value)}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <TabsContent
-            value="overview"
-            className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]"
-          >
-            <section className="pixel-panel p-4">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-black">Assignment Board</h2>
-                  <p className="text-sm text-violet-950/65">
-                    Live counts, due dates, and progress from your tracker rows.
-                  </p>
-                </div>
-                <div className="text-right text-sm font-bold text-violet-700">
-                  {percent(completionRate)}
-                </div>
-              </div>
-              <Progress
-                value={completionRate * 100}
-                className="mb-5 h-3 border border-violet-300 bg-violet-100"
-              />
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {statuses.map((status) => (
-                  <div
-                    key={status}
-                    className="border-2 border-violet-200 bg-white p-3"
-                  >
-                    <p className="text-xs font-bold uppercase text-violet-700">
-                      {status}
-                    </p>
-                    <p className="mt-2 text-3xl font-black">
-                      {
-                        data.assignments.filter(
-                          (assignment) => assignment.status === status,
-                        ).length
-                      }
+          {activeTab === 'overview' ? (
+            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+              <section className="pixel-panel p-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-black">Assignment Board</h2>
+                    <p className="text-sm text-violet-950/65">
+                      Live counts, due dates, and progress from your tracker
+                      rows.
                     </p>
                   </div>
-                ))}
-                <div className="border-2 border-fuchsia-200 bg-fuchsia-50 p-3">
-                  <p className="text-xs font-bold uppercase text-fuchsia-700">
-                    Due This Week
-                  </p>
-                  <p className="mt-2 text-3xl font-black">
-                    {assignmentMetrics.dueThisWeek}
-                  </p>
+                  <div className="text-right text-sm font-bold text-violet-700">
+                    {percent(completionRate)}
+                  </div>
                 </div>
-              </div>
-            </section>
-
-            <section className="pixel-panel p-4">
-              <h2 className="mb-4 text-xl font-black">Courses</h2>
-              <div className="grid gap-3">
-                {data.courses.map((course) => {
-                  const courseAssignments = data.assignments.filter(
-                    (assignment) => assignment.courseId === course.id,
-                  );
-                  const done = courseAssignments.filter(
-                    (assignment) => assignment.status === 'Done',
-                  ).length;
-                  return (
-                    <button
-                      key={course.id}
-                      className={`grid gap-2 border-2 p-3 text-left transition hover:-translate-y-0.5 ${
-                        activeCourse === course.id
-                          ? 'border-violet-500 bg-violet-100'
-                          : 'border-violet-200 bg-white'
-                      }`}
-                      onClick={() => setActiveCourse(course.id)}
+                <Progress
+                  value={completionRate * 100}
+                  className="mb-5 h-3 border border-violet-300 bg-violet-100"
+                />
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {statuses.map((status) => (
+                    <div
+                      key={status}
+                      className="border-2 border-violet-200 bg-white p-3"
                     >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="size-4 border-2 border-violet-400"
-                          style={{ background: course.color }}
-                        />
-                        <span className="font-black">{course.name}</span>
-                      </div>
-                      <span className="text-sm text-violet-950/65">
-                        {course.code || 'No code'} - {course.room || 'No room'}
-                      </span>
-                      <Progress
-                        value={
-                          courseAssignments.length > 0
-                            ? (done / courseAssignments.length) * 100
-                            : 0
+                      <p className="text-xs font-bold uppercase text-violet-700">
+                        {status}
+                      </p>
+                      <p className="mt-2 text-3xl font-black">
+                        {
+                          data.assignments.filter(
+                            (assignment) => assignment.status === status,
+                          ).length
                         }
-                        className="h-2 bg-violet-50"
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="pixel-panel p-4 lg:col-span-2">
-              <h2 className="mb-4 text-xl font-black">Upcoming</h2>
-              <AssignmentTable
-                assignments={[...data.assignments]
-                  .filter((assignment) => assignment.status !== 'Done')
-                  .sort(
-                    (a, b) =>
-                      new Date(a.dueDate).getTime() -
-                      new Date(b.dueDate).getTime(),
-                  )
-                  .slice(0, 6)}
-                courseById={courseById}
-                updateAssignment={updateAssignment}
-                removeAssignment={(id) => removeItem('assignments', id)}
-              />
-            </section>
-          </TabsContent>
-
-          <TabsContent value="assignments" className="grid gap-4">
-            <section className="pixel-panel grid gap-3 p-4 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.7fr_auto]">
-              <Field label="Course">
-                <CourseSelect
-                  courses={data.courses}
-                  value={assignmentDraft.courseId}
-                  onChange={(value) =>
-                    setAssignmentDraft({ ...assignmentDraft, courseId: value })
-                  }
-                />
-              </Field>
-              <Field label="Assignment">
-                <TextInput
-                  value={assignmentDraft.title}
-                  onChange={(event) =>
-                    setAssignmentDraft({
-                      ...assignmentDraft,
-                      title: event.target.value,
-                    })
-                  }
-                  placeholder="Problem set, essay, quiz"
-                />
-              </Field>
-              <Field label="Type">
-                <NativeSelect
-                  value={assignmentDraft.type}
-                  onChange={(event) =>
-                    setAssignmentDraft({
-                      ...assignmentDraft,
-                      type: event.target.value as AssignmentType,
-                    })
-                  }
-                >
-                  {assignmentTypes.map((type) => (
-                    <NativeSelectOption key={type} value={type}>
-                      {type}
-                    </NativeSelectOption>
+                      </p>
+                    </div>
                   ))}
-                </NativeSelect>
-              </Field>
-              <Field label="Due Date">
-                <TextInput
-                  type="date"
-                  value={assignmentDraft.dueDate}
-                  onChange={(event) =>
-                    setAssignmentDraft({
-                      ...assignmentDraft,
-                      dueDate: event.target.value,
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Weight">
-                <TextInput
-                  type="number"
-                  min="0"
-                  value={assignmentDraft.weight}
-                  onChange={(event) =>
-                    setAssignmentDraft({
-                      ...assignmentDraft,
-                      weight: numberValue(event.target.value),
-                    })
-                  }
-                />
-              </Field>
-              <div className="flex items-end">
-                <Button onClick={addAssignment} className="h-9 w-full">
-                  <Plus data-icon="inline-start" />
-                  Add
-                </Button>
-              </div>
-            </section>
-            <section className="pixel-panel p-4">
-              <AssignmentTable
-                assignments={data.assignments}
-                courseById={courseById}
-                updateAssignment={updateAssignment}
-                removeAssignment={(id) => removeItem('assignments', id)}
-              />
-            </section>
-          </TabsContent>
+                  <div className="border-2 border-fuchsia-200 bg-fuchsia-50 p-3">
+                    <p className="text-xs font-bold uppercase text-fuchsia-700">
+                      Due This Week
+                    </p>
+                    <p className="mt-2 text-3xl font-black">
+                      {assignmentMetrics.dueThisWeek}
+                    </p>
+                  </div>
+                </div>
+              </section>
 
-          <TabsContent
-            value="courses"
-            className="grid gap-4 xl:grid-cols-[360px_1fr]"
-          >
-            <section className="pixel-panel grid gap-3 p-4">
-              <h2 className="text-xl font-black">Add Course</h2>
-              <Field label="Name">
-                <TextInput
-                  value={courseDraft.name}
-                  onChange={(event) =>
-                    setCourseDraft({ ...courseDraft, name: event.target.value })
-                  }
-                  placeholder="Course name"
-                />
-              </Field>
-              <Field label="Code">
-                <TextInput
-                  value={courseDraft.code}
-                  onChange={(event) =>
-                    setCourseDraft({ ...courseDraft, code: event.target.value })
-                  }
-                  placeholder="COUR 101"
-                />
-              </Field>
-              <Field label="Room">
-                <TextInput
-                  value={courseDraft.room}
-                  onChange={(event) =>
-                    setCourseDraft({ ...courseDraft, room: event.target.value })
-                  }
-                  placeholder="Room"
-                />
-              </Field>
-              <Field label="Instructor">
-                <TextInput
-                  value={courseDraft.instructor}
-                  onChange={(event) =>
-                    setCourseDraft({
-                      ...courseDraft,
-                      instructor: event.target.value,
-                    })
-                  }
-                  placeholder="Name"
-                />
-              </Field>
-              <div className="flex flex-wrap gap-2">
-                {courseColors.map((color) => (
-                  <button
-                    key={color}
-                    aria-label={`Use color ${color}`}
-                    className={`size-8 border-2 ${
-                      courseDraft.color === color
-                        ? 'border-violet-700'
-                        : 'border-violet-200'
-                    }`}
-                    style={{ background: color }}
-                    onClick={() => setCourseDraft({ ...courseDraft, color })}
-                  />
-                ))}
-              </div>
-              <Button onClick={addCourse}>
-                <Plus data-icon="inline-start" />
-                Add course
-              </Button>
-            </section>
-
-            <section className="pixel-panel p-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Course</TableHead>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Room</TableHead>
-                    <TableHead>Instructor</TableHead>
-                    <TableHead>Credits</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.courses.map((course) => (
-                    <TableRow key={course.id}>
-                      <TableCell>
-                        <TextInput
-                          value={course.name}
-                          onChange={(event) =>
-                            updateCourse(course.id, 'name', event.target.value)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          value={course.code}
-                          onChange={(event) =>
-                            updateCourse(course.id, 'code', event.target.value)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          value={course.room}
-                          onChange={(event) =>
-                            updateCourse(course.id, 'room', event.target.value)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          value={course.instructor}
-                          onChange={(event) =>
-                            updateCourse(
-                              course.id,
-                              'instructor',
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          type="number"
-                          value={course.credits}
-                          onChange={(event) =>
-                            updateCourse(
-                              course.id,
-                              'credits',
-                              numberValue(event.target.value),
-                            )
-                          }
-                          className="w-20"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          aria-label={`Delete ${course.name}`}
-                          onClick={() => removeItem('courses', course.id)}
-                        >
-                          <Trash2 />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </section>
-          </TabsContent>
-
-          <TabsContent
-            value="grades"
-            className="grid gap-4 lg:grid-cols-[1fr_360px]"
-          >
-            <section className="pixel-panel p-4">
-              <h2 className="mb-4 text-xl font-black">Gradebook</h2>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Assignment</TableHead>
-                    <TableHead>Course</TableHead>
-                    <TableHead>Score</TableHead>
-                    <TableHead>Max</TableHead>
-                    <TableHead>Weight</TableHead>
-                    <TableHead>Counts</TableHead>
-                    <TableHead>Weighted</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.assignments.map((assignment) => {
-                    const weighted =
-                      assignment.graded && assignment.maxScore > 0
-                        ? (assignment.score / assignment.maxScore) *
-                          assignment.weight
-                        : 0;
+              <section className="pixel-panel p-4">
+                <h2 className="mb-4 text-xl font-black">Courses</h2>
+                <div className="grid gap-3">
+                  {data.courses.map((course) => {
+                    const courseAssignments = data.assignments.filter(
+                      (assignment) => assignment.courseId === course.id,
+                    );
+                    const done = courseAssignments.filter(
+                      (assignment) => assignment.status === 'Done',
+                    ).length;
                     return (
-                      <TableRow key={assignment.id}>
-                        <TableCell className="min-w-52 font-semibold">
-                          {assignment.title || 'Untitled'}
-                        </TableCell>
+                      <button
+                        key={course.id}
+                        className={`grid gap-2 border-2 p-3 text-left transition hover:-translate-y-0.5 ${
+                          activeCourse === course.id
+                            ? 'border-violet-500 bg-violet-100'
+                            : 'border-violet-200 bg-white'
+                        }`}
+                        onClick={() => setActiveCourse(course.id)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className="size-4 border-2 border-violet-400"
+                            style={{ background: course.color }}
+                          />
+                          <span className="font-black">{course.name}</span>
+                        </div>
+                        <span className="text-sm text-violet-950/65">
+                          {course.code || 'No code'} -{' '}
+                          {course.room || 'No room'}
+                        </span>
+                        <Progress
+                          value={
+                            courseAssignments.length > 0
+                              ? (done / courseAssignments.length) * 100
+                              : 0
+                          }
+                          className="h-2 bg-violet-50"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="pixel-panel p-4 lg:col-span-2">
+                <h2 className="mb-4 text-xl font-black">Upcoming</h2>
+                <AssignmentTable
+                  assignments={[...data.assignments]
+                    .filter((assignment) => assignment.status !== 'Done')
+                    .sort(
+                      (a, b) =>
+                        new Date(a.dueDate).getTime() -
+                        new Date(b.dueDate).getTime(),
+                    )
+                    .slice(0, 6)}
+                  courseById={courseById}
+                  updateAssignment={updateAssignment}
+                  removeAssignment={(id) => removeItem('assignments', id)}
+                />
+              </section>
+            </div>
+          ) : null}
+
+          {activeTab === 'assignments' ? (
+            <div className="grid gap-4">
+              <section className="pixel-panel grid gap-3 p-4 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.7fr_auto]">
+                <Field label="Course">
+                  <CourseSelect
+                    courses={data.courses}
+                    value={assignmentDraft.courseId}
+                    onChange={(value) =>
+                      setAssignmentDraft({
+                        ...assignmentDraft,
+                        courseId: value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Assignment">
+                  <TextInput
+                    value={assignmentDraft.title}
+                    onChange={(event) =>
+                      setAssignmentDraft({
+                        ...assignmentDraft,
+                        title: event.target.value,
+                      })
+                    }
+                    placeholder="Problem set, essay, quiz"
+                  />
+                </Field>
+                <Field label="Type">
+                  <NativeSelect
+                    value={assignmentDraft.type}
+                    onChange={(event) =>
+                      setAssignmentDraft({
+                        ...assignmentDraft,
+                        type: event.target.value as AssignmentType,
+                      })
+                    }
+                  >
+                    {assignmentTypes.map((type) => (
+                      <NativeSelectOption key={type} value={type}>
+                        {type}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                <Field label="Due Date">
+                  <TextInput
+                    type="date"
+                    value={assignmentDraft.dueDate}
+                    onChange={(event) =>
+                      setAssignmentDraft({
+                        ...assignmentDraft,
+                        dueDate: event.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Weight">
+                  <TextInput
+                    type="number"
+                    min="0"
+                    value={assignmentDraft.weight}
+                    onChange={(event) =>
+                      setAssignmentDraft({
+                        ...assignmentDraft,
+                        weight: numberValue(event.target.value),
+                      })
+                    }
+                  />
+                </Field>
+                <div className="flex items-end">
+                  <Button onClick={addAssignment} className="h-9 w-full">
+                    <Plus data-icon="inline-start" />
+                    Add
+                  </Button>
+                </div>
+              </section>
+              <section className="pixel-panel p-4">
+                <AssignmentTable
+                  assignments={data.assignments}
+                  courseById={courseById}
+                  updateAssignment={updateAssignment}
+                  removeAssignment={(id) => removeItem('assignments', id)}
+                />
+              </section>
+            </div>
+          ) : null}
+
+          {activeTab === 'courses' ? (
+            <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+              <section className="pixel-panel grid gap-3 p-4">
+                <h2 className="text-xl font-black">Add Course</h2>
+                <Field label="Name">
+                  <TextInput
+                    value={courseDraft.name}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        name: event.target.value,
+                      })
+                    }
+                    placeholder="Course name"
+                  />
+                </Field>
+                <Field label="Code">
+                  <TextInput
+                    value={courseDraft.code}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        code: event.target.value,
+                      })
+                    }
+                    placeholder="COUR 101"
+                  />
+                </Field>
+                <Field label="Room">
+                  <TextInput
+                    value={courseDraft.room}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        room: event.target.value,
+                      })
+                    }
+                    placeholder="Room"
+                  />
+                </Field>
+                <Field label="Instructor">
+                  <TextInput
+                    value={courseDraft.instructor}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        instructor: event.target.value,
+                      })
+                    }
+                    placeholder="Name"
+                  />
+                </Field>
+                <div className="flex flex-wrap gap-2">
+                  {courseColors.map((color) => (
+                    <button
+                      key={color}
+                      aria-label={`Use color ${color}`}
+                      className={`size-8 border-2 ${
+                        courseDraft.color === color
+                          ? 'border-violet-700'
+                          : 'border-violet-200'
+                      }`}
+                      style={{ background: color }}
+                      onClick={() => setCourseDraft({ ...courseDraft, color })}
+                    />
+                  ))}
+                </div>
+                <Button onClick={addCourse}>
+                  <Plus data-icon="inline-start" />
+                  Add course
+                </Button>
+              </section>
+
+              <section className="pixel-panel p-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Course</TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Room</TableHead>
+                      <TableHead>Instructor</TableHead>
+                      <TableHead>Credits</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.courses.map((course) => (
+                      <TableRow key={course.id}>
                         <TableCell>
-                          {courseById.get(assignment.courseId)?.name ?? '-'}
+                          <TextInput
+                            value={course.name}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'name',
+                                event.target.value,
+                              )
+                            }
+                          />
                         </TableCell>
                         <TableCell>
                           <TextInput
-                            type="number"
-                            value={assignment.score}
+                            value={course.code}
                             onChange={(event) =>
-                              updateAssignment(
-                                assignment.id,
-                                'score',
-                                numberValue(event.target.value),
+                              updateCourse(
+                                course.id,
+                                'code',
+                                event.target.value,
                               )
                             }
-                            className="w-24"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextInput
+                            value={course.room}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'room',
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextInput
+                            value={course.instructor}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'instructor',
+                                event.target.value,
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell>
                           <TextInput
                             type="number"
-                            value={assignment.maxScore}
+                            value={course.credits}
                             onChange={(event) =>
-                              updateAssignment(
-                                assignment.id,
-                                'maxScore',
+                              updateCourse(
+                                course.id,
+                                'credits',
                                 numberValue(event.target.value),
                               )
                             }
-                            className="w-24"
+                            className="w-20"
                           />
                         </TableCell>
                         <TableCell>
-                          <TextInput
-                            type="number"
-                            value={assignment.weight}
-                            onChange={(event) =>
-                              updateAssignment(
-                                assignment.id,
-                                'weight',
-                                numberValue(event.target.value),
-                              )
-                            }
-                            className="w-24"
-                          />
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            aria-label={`Delete ${course.name}`}
+                            onClick={() => removeItem('courses', course.id)}
+                          >
+                            <Trash2 />
+                          </Button>
                         </TableCell>
-                        <TableCell>
-                          <label className="flex items-center gap-2 text-sm font-semibold">
-                            <input
-                              type="checkbox"
-                              checked={assignment.graded}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </section>
+            </div>
+          ) : null}
+
+          {activeTab === 'grades' ? (
+            <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+              <section className="pixel-panel p-4">
+                <h2 className="mb-4 text-xl font-black">Gradebook</h2>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Assignment</TableHead>
+                      <TableHead>Course</TableHead>
+                      <TableHead>Score</TableHead>
+                      <TableHead>Max</TableHead>
+                      <TableHead>Weight</TableHead>
+                      <TableHead>Counts</TableHead>
+                      <TableHead>Weighted</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.assignments.map((assignment) => {
+                      const weighted =
+                        assignment.graded && assignment.maxScore > 0
+                          ? (assignment.score / assignment.maxScore) *
+                            assignment.weight
+                          : 0;
+                      return (
+                        <TableRow key={assignment.id}>
+                          <TableCell className="min-w-52 font-semibold">
+                            {assignment.title || 'Untitled'}
+                          </TableCell>
+                          <TableCell>
+                            {courseById.get(assignment.courseId)?.name ?? '-'}
+                          </TableCell>
+                          <TableCell>
+                            <TextInput
+                              type="number"
+                              value={assignment.score}
                               onChange={(event) =>
                                 updateAssignment(
                                   assignment.id,
-                                  'graded',
-                                  event.target.checked,
+                                  'score',
+                                  numberValue(event.target.value),
                                 )
                               }
+                              className="w-24"
                             />
-                            Graded
-                          </label>
-                        </TableCell>
-                        <TableCell className="font-black">
-                          {oneDecimal(weighted)} pts
-                        </TableCell>
-                      </TableRow>
+                          </TableCell>
+                          <TableCell>
+                            <TextInput
+                              type="number"
+                              value={assignment.maxScore}
+                              onChange={(event) =>
+                                updateAssignment(
+                                  assignment.id,
+                                  'maxScore',
+                                  numberValue(event.target.value),
+                                )
+                              }
+                              className="w-24"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextInput
+                              type="number"
+                              value={assignment.weight}
+                              onChange={(event) =>
+                                updateAssignment(
+                                  assignment.id,
+                                  'weight',
+                                  numberValue(event.target.value),
+                                )
+                              }
+                              className="w-24"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <label className="flex items-center gap-2 text-sm font-semibold">
+                              <input
+                                type="checkbox"
+                                checked={assignment.graded}
+                                onChange={(event) =>
+                                  updateAssignment(
+                                    assignment.id,
+                                    'graded',
+                                    event.target.checked,
+                                  )
+                                }
+                              />
+                              Graded
+                            </label>
+                          </TableCell>
+                          <TableCell className="font-black">
+                            {oneDecimal(weighted)} pts
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </section>
+
+              <aside className="pixel-panel grid content-start gap-4 p-4">
+                <h2 className="text-xl font-black">Grade Summary</h2>
+                <MiniGrade
+                  label="Weight received"
+                  value={`${oneDecimal(weightedPossible)}%`}
+                />
+                <MiniGrade
+                  label="Weighted points"
+                  value={`${oneDecimal(weightedEarned)}%`}
+                />
+                <MiniGrade
+                  label="Current average"
+                  value={weightedPossible > 0 ? percent(currentGrade) : '-'}
+                />
+                <div className="grid gap-2 border-2 border-violet-200 bg-white p-3">
+                  {data.courses.map((course) => {
+                    const entries = data.assignments.filter(
+                      (assignment) =>
+                        assignment.courseId === course.id &&
+                        assignment.graded &&
+                        assignment.weight > 0 &&
+                        assignment.maxScore > 0,
+                    );
+                    const possible = entries.reduce(
+                      (sum, assignment) => sum + assignment.weight,
+                      0,
+                    );
+                    const earned = entries.reduce(
+                      (sum, assignment) =>
+                        sum +
+                        (assignment.score / assignment.maxScore) *
+                          assignment.weight,
+                      0,
+                    );
+                    return (
+                      <div key={course.id} className="grid gap-1">
+                        <div className="flex items-center justify-between gap-3 text-sm font-bold">
+                          <span>{course.name}</span>
+                          <span>
+                            {possible > 0 ? percent(earned / possible) : '-'}
+                          </span>
+                        </div>
+                        <Progress
+                          value={possible > 0 ? (earned / possible) * 100 : 0}
+                          className="h-2"
+                        />
+                      </div>
                     );
                   })}
-                </TableBody>
-              </Table>
-            </section>
+                </div>
+              </aside>
+            </div>
+          ) : null}
 
-            <aside className="pixel-panel grid content-start gap-4 p-4">
-              <h2 className="text-xl font-black">Grade Summary</h2>
-              <MiniGrade
-                label="Weight received"
-                value={`${oneDecimal(weightedPossible)}%`}
-              />
-              <MiniGrade
-                label="Weighted points"
-                value={`${oneDecimal(weightedEarned)}%`}
-              />
-              <MiniGrade
-                label="Current average"
-                value={weightedPossible > 0 ? percent(currentGrade) : '-'}
-              />
-              <div className="grid gap-2 border-2 border-violet-200 bg-white p-3">
-                {data.courses.map((course) => {
-                  const entries = data.assignments.filter(
-                    (assignment) =>
-                      assignment.courseId === course.id &&
-                      assignment.graded &&
-                      assignment.weight > 0 &&
-                      assignment.maxScore > 0,
-                  );
-                  const possible = entries.reduce(
-                    (sum, assignment) => sum + assignment.weight,
-                    0,
-                  );
-                  const earned = entries.reduce(
-                    (sum, assignment) =>
-                      sum +
-                      (assignment.score / assignment.maxScore) *
-                        assignment.weight,
-                    0,
-                  );
-                  return (
-                    <div key={course.id} className="grid gap-1">
-                      <div className="flex items-center justify-between gap-3 text-sm font-bold">
-                        <span>{course.name}</span>
-                        <span>
-                          {possible > 0 ? percent(earned / possible) : '-'}
-                        </span>
+          {activeTab === 'schedule' ? (
+            <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+              <section className="pixel-panel grid gap-3 p-4">
+                <h2 className="text-xl font-black">Add Block</h2>
+                <Field label="Course">
+                  <CourseSelect
+                    courses={data.courses}
+                    value={scheduleDraft.courseId}
+                    onChange={(value) =>
+                      setScheduleDraft({ ...scheduleDraft, courseId: value })
+                    }
+                  />
+                </Field>
+                <Field label="Day">
+                  <NativeSelect
+                    value={scheduleDraft.day}
+                    onChange={(event) =>
+                      setScheduleDraft({
+                        ...scheduleDraft,
+                        day: event.target.value,
+                      })
+                    }
+                  >
+                    {days.map((day) => (
+                      <NativeSelectOption key={day} value={day}>
+                        {day}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Start">
+                    <TextInput
+                      type="time"
+                      value={scheduleDraft.start}
+                      onChange={(event) =>
+                        setScheduleDraft({
+                          ...scheduleDraft,
+                          start: event.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="End">
+                    <TextInput
+                      type="time"
+                      value={scheduleDraft.end}
+                      onChange={(event) =>
+                        setScheduleDraft({
+                          ...scheduleDraft,
+                          end: event.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                <Field label="Location">
+                  <TextInput
+                    value={scheduleDraft.location}
+                    onChange={(event) =>
+                      setScheduleDraft({
+                        ...scheduleDraft,
+                        location: event.target.value,
+                      })
+                    }
+                    placeholder="Room"
+                  />
+                </Field>
+                <Button onClick={addSchedule}>
+                  <Plus data-icon="inline-start" />
+                  Add block
+                </Button>
+              </section>
+
+              <section className="pixel-panel overflow-x-auto p-4">
+                <h2 className="mb-4 text-xl font-black">Weekly Schedule</h2>
+                <div className="grid min-w-[760px] grid-cols-5 gap-3">
+                  {days.map((day) => (
+                    <div key={day} className="grid content-start gap-2">
+                      <div className="border-2 border-violet-300 bg-violet-100 p-2 text-center text-sm font-black">
+                        {day}
                       </div>
-                      <Progress
-                        value={possible > 0 ? (earned / possible) * 100 : 0}
-                        className="h-2"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </aside>
-          </TabsContent>
-
-          <TabsContent
-            value="schedule"
-            className="grid gap-4 xl:grid-cols-[360px_1fr]"
-          >
-            <section className="pixel-panel grid gap-3 p-4">
-              <h2 className="text-xl font-black">Add Block</h2>
-              <Field label="Course">
-                <CourseSelect
-                  courses={data.courses}
-                  value={scheduleDraft.courseId}
-                  onChange={(value) =>
-                    setScheduleDraft({ ...scheduleDraft, courseId: value })
-                  }
-                />
-              </Field>
-              <Field label="Day">
-                <NativeSelect
-                  value={scheduleDraft.day}
-                  onChange={(event) =>
-                    setScheduleDraft({
-                      ...scheduleDraft,
-                      day: event.target.value,
-                    })
-                  }
-                >
-                  {days.map((day) => (
-                    <NativeSelectOption key={day} value={day}>
-                      {day}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Start">
-                  <TextInput
-                    type="time"
-                    value={scheduleDraft.start}
-                    onChange={(event) =>
-                      setScheduleDraft({
-                        ...scheduleDraft,
-                        start: event.target.value,
-                      })
-                    }
-                  />
-                </Field>
-                <Field label="End">
-                  <TextInput
-                    type="time"
-                    value={scheduleDraft.end}
-                    onChange={(event) =>
-                      setScheduleDraft({
-                        ...scheduleDraft,
-                        end: event.target.value,
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-              <Field label="Location">
-                <TextInput
-                  value={scheduleDraft.location}
-                  onChange={(event) =>
-                    setScheduleDraft({
-                      ...scheduleDraft,
-                      location: event.target.value,
-                    })
-                  }
-                  placeholder="Room"
-                />
-              </Field>
-              <Button onClick={addSchedule}>
-                <Plus data-icon="inline-start" />
-                Add block
-              </Button>
-            </section>
-
-            <section className="pixel-panel overflow-x-auto p-4">
-              <h2 className="mb-4 text-xl font-black">Weekly Schedule</h2>
-              <div className="grid min-w-[760px] grid-cols-5 gap-3">
-                {days.map((day) => (
-                  <div key={day} className="grid content-start gap-2">
-                    <div className="border-2 border-violet-300 bg-violet-100 p-2 text-center text-sm font-black">
-                      {day}
-                    </div>
-                    {data.schedule
-                      .filter((block) => block.day === day)
-                      .sort((a, b) => a.start.localeCompare(b.start))
-                      .map((block) => {
-                        const course = courseById.get(block.courseId);
-                        return (
-                          <div
-                            key={block.id}
-                            className="group border-2 border-violet-200 bg-white p-2"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <p className="font-black">
-                                  {course?.name ?? 'Course'}
-                                </p>
-                                <p className="text-xs text-violet-950/65">
-                                  {block.start} - {block.end}
-                                </p>
-                                <p className="text-xs font-semibold">
-                                  {block.location || course?.room || 'Location'}
-                                </p>
-                              </div>
-                              <button
-                                aria-label="Delete schedule block"
-                                className="opacity-0 transition group-hover:opacity-100"
-                                onClick={() => removeItem('schedule', block.id)}
-                              >
-                                <Trash2 className="size-4" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                ))}
-              </div>
-            </section>
-          </TabsContent>
-
-          <TabsContent
-            value="office-hours"
-            className="grid gap-4 xl:grid-cols-[360px_1fr]"
-          >
-            <section className="pixel-panel grid gap-3 p-4">
-              <h2 className="text-xl font-black">Add Office Hours</h2>
-              <Field label="Course">
-                <CourseSelect
-                  courses={data.courses}
-                  value={officeHourDraft.courseId}
-                  onChange={(value) =>
-                    setOfficeHourDraft({
-                      ...officeHourDraft,
-                      courseId: value,
-                      teacher: courseById.get(value)?.instructor || '',
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Teacher">
-                <TextInput
-                  value={officeHourDraft.teacher}
-                  onChange={(event) =>
-                    setOfficeHourDraft({
-                      ...officeHourDraft,
-                      teacher: event.target.value,
-                    })
-                  }
-                  placeholder="Instructor or TA"
-                />
-              </Field>
-              <Field label="Office">
-                <TextInput
-                  value={officeHourDraft.office}
-                  onChange={(event) =>
-                    setOfficeHourDraft({
-                      ...officeHourDraft,
-                      office: event.target.value,
-                    })
-                  }
-                  placeholder="Office, building, or Zoom link"
-                />
-              </Field>
-              <Field label="Day">
-                <NativeSelect
-                  value={officeHourDraft.day}
-                  onChange={(event) =>
-                    setOfficeHourDraft({
-                      ...officeHourDraft,
-                      day: event.target.value,
-                    })
-                  }
-                >
-                  {days.map((day) => (
-                    <NativeSelectOption key={day} value={day}>
-                      {day}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Start">
-                  <TextInput
-                    type="time"
-                    value={officeHourDraft.start}
-                    onChange={(event) =>
-                      setOfficeHourDraft({
-                        ...officeHourDraft,
-                        start: event.target.value,
-                      })
-                    }
-                  />
-                </Field>
-                <Field label="End">
-                  <TextInput
-                    type="time"
-                    value={officeHourDraft.end}
-                    onChange={(event) =>
-                      setOfficeHourDraft({
-                        ...officeHourDraft,
-                        end: event.target.value,
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-              <Field label="Notes">
-                <TextInput
-                  value={officeHourDraft.notes}
-                  onChange={(event) =>
-                    setOfficeHourDraft({
-                      ...officeHourDraft,
-                      notes: event.target.value,
-                    })
-                  }
-                  placeholder="Drop-in, appointment, online"
-                />
-              </Field>
-              <Button onClick={addOfficeHour}>
-                <Plus data-icon="inline-start" />
-                Add office hours
-              </Button>
-            </section>
-
-            <section className="pixel-panel overflow-x-auto p-4">
-              <h2 className="mb-4 text-xl font-black">Office Hours</h2>
-              <div className="grid min-w-[760px] grid-cols-5 gap-3">
-                {days.map((day) => (
-                  <div key={day} className="grid content-start gap-2">
-                    <div className="border-2 border-violet-300 bg-violet-100 p-2 text-center text-sm font-black">
-                      {day}
-                    </div>
-                    {data.officeHours
-                      .filter((block) => block.day === day)
-                      .sort((a, b) => a.start.localeCompare(b.start))
-                      .map((block) => {
-                        const course = courseById.get(block.courseId);
-                        return (
-                          <div
-                            key={block.id}
-                            className="group border-2 border-violet-200 bg-white p-2"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="grid gap-1">
-                                <p className="font-black">
-                                  {course?.name ?? 'Course'}
-                                </p>
-                                <p className="text-xs text-violet-950/65">
-                                  {block.start} - {block.end}
-                                </p>
-                                <p className="text-xs font-semibold">
-                                  {block.teacher ||
-                                    course?.instructor ||
-                                    'Teacher'}
-                                </p>
-                                <p className="text-xs font-semibold text-violet-700">
-                                  {block.office || 'Office'}
-                                </p>
-                                {block.notes ? (
-                                  <p className="text-xs text-violet-950/65">
-                                    {block.notes}
+                      {data.schedule
+                        .filter((block) => block.day === day)
+                        .sort((a, b) => a.start.localeCompare(b.start))
+                        .map((block) => {
+                          const course = courseById.get(block.courseId);
+                          return (
+                            <div
+                              key={block.id}
+                              className="group border-2 border-violet-200 bg-white p-2"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-black">
+                                    {course?.name ?? 'Course'}
                                   </p>
-                                ) : null}
+                                  <p className="text-xs text-violet-950/65">
+                                    {block.start} - {block.end}
+                                  </p>
+                                  <p className="text-xs font-semibold">
+                                    {block.location ||
+                                      course?.room ||
+                                      'Location'}
+                                  </p>
+                                </div>
+                                <button
+                                  aria-label="Delete schedule block"
+                                  className="opacity-0 transition group-hover:opacity-100"
+                                  onClick={() =>
+                                    removeItem('schedule', block.id)
+                                  }
+                                >
+                                  <Trash2 className="size-4" />
+                                </button>
                               </div>
-                              <button
-                                aria-label="Delete office hours"
-                                className="opacity-0 transition group-hover:opacity-100"
-                                onClick={() =>
-                                  removeItem('officeHours', block.id)
-                                }
-                              >
-                                <Trash2 className="size-4" />
-                              </button>
                             </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                ))}
-              </div>
-            </section>
-          </TabsContent>
-
-          <TabsContent
-            value="notes"
-            className="grid gap-4 lg:grid-cols-[360px_1fr]"
-          >
-            <section className="pixel-panel grid gap-3 p-4">
-              <h2 className="text-xl font-black">New Note</h2>
-              <Field label="Course">
-                <CourseSelect
-                  courses={data.courses}
-                  value={noteDraft.courseId}
-                  onChange={(value) =>
-                    setNoteDraft({ ...noteDraft, courseId: value })
-                  }
-                />
-              </Field>
-              <Field label="Title">
-                <TextInput
-                  value={noteDraft.title}
-                  onChange={(event) =>
-                    setNoteDraft({ ...noteDraft, title: event.target.value })
-                  }
-                />
-              </Field>
-              <Field label="Note">
-                <TextArea
-                  value={noteDraft.body}
-                  onChange={(event) =>
-                    setNoteDraft({ ...noteDraft, body: event.target.value })
-                  }
-                />
-              </Field>
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input
-                  type="checkbox"
-                  checked={noteDraft.pinned}
-                  onChange={(event) =>
-                    setNoteDraft({ ...noteDraft, pinned: event.target.checked })
-                  }
-                />
-                Pin note
-              </label>
-              <Button onClick={addNote}>
-                <Plus data-icon="inline-start" />
-                Add note
-              </Button>
-            </section>
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {[...data.notes]
-                .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-                .map((note) => (
-                  <article key={note.id} className="pixel-panel grid gap-3 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-bold uppercase text-violet-700">
-                          {courseById.get(note.courseId)?.name ?? 'General'}
-                        </p>
-                        <h3 className="text-lg font-black">
-                          {note.title || 'Untitled note'}
-                        </h3>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Delete note"
-                        onClick={() => removeItem('notes', note.id)}
-                      >
-                        <Trash2 />
-                      </Button>
+                          );
+                        })}
                     </div>
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-violet-950/75">
-                      {note.body || 'No note text yet.'}
-                    </p>
-                  </article>
-                ))}
-            </section>
-          </TabsContent>
+                  ))}
+                </div>
+              </section>
+            </div>
+          ) : null}
 
-          <TabsContent
-            value="hours"
-            className="grid gap-4 lg:grid-cols-[360px_1fr]"
-          >
-            <section className="pixel-panel grid gap-3 p-4">
-              <h2 className="text-xl font-black">Log Hours</h2>
-              <Field label="Event">
-                <TextInput
-                  value={hourDraft.event}
-                  onChange={(event) =>
-                    setHourDraft({ ...hourDraft, event: event.target.value })
-                  }
-                  placeholder="Event"
-                />
-              </Field>
-              <Field label="Project">
-                <TextInput
-                  value={hourDraft.project}
-                  onChange={(event) =>
-                    setHourDraft({ ...hourDraft, project: event.target.value })
-                  }
-                  placeholder="Project"
-                />
-              </Field>
-              <Field label="Date">
-                <TextInput
-                  type="date"
-                  value={hourDraft.date}
-                  onChange={(event) =>
-                    setHourDraft({ ...hourDraft, date: event.target.value })
-                  }
-                />
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Start">
-                  <TextInput
-                    type="time"
-                    value={hourDraft.start}
-                    onChange={(event) =>
-                      setHourDraft({ ...hourDraft, start: event.target.value })
+          {activeTab === 'office-hours' ? (
+            <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+              <section className="pixel-panel grid gap-3 p-4">
+                <h2 className="text-xl font-black">Add Office Hours</h2>
+                <Field label="Course">
+                  <CourseSelect
+                    courses={data.courses}
+                    value={officeHourDraft.courseId}
+                    onChange={(value) =>
+                      setOfficeHourDraft({
+                        ...officeHourDraft,
+                        courseId: value,
+                        teacher: courseById.get(value)?.instructor || '',
+                      })
                     }
                   />
                 </Field>
-                <Field label="End">
+                <Field label="Teacher">
                   <TextInput
-                    type="time"
-                    value={hourDraft.end}
+                    value={officeHourDraft.teacher}
                     onChange={(event) =>
-                      setHourDraft({ ...hourDraft, end: event.target.value })
+                      setOfficeHourDraft({
+                        ...officeHourDraft,
+                        teacher: event.target.value,
+                      })
+                    }
+                    placeholder="Instructor or TA"
+                  />
+                </Field>
+                <Field label="Office">
+                  <TextInput
+                    value={officeHourDraft.office}
+                    onChange={(event) =>
+                      setOfficeHourDraft({
+                        ...officeHourDraft,
+                        office: event.target.value,
+                      })
+                    }
+                    placeholder="Office, building, or Zoom link"
+                  />
+                </Field>
+                <Field label="Day">
+                  <NativeSelect
+                    value={officeHourDraft.day}
+                    onChange={(event) =>
+                      setOfficeHourDraft({
+                        ...officeHourDraft,
+                        day: event.target.value,
+                      })
+                    }
+                  >
+                    {days.map((day) => (
+                      <NativeSelectOption key={day} value={day}>
+                        {day}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Start">
+                    <TextInput
+                      type="time"
+                      value={officeHourDraft.start}
+                      onChange={(event) =>
+                        setOfficeHourDraft({
+                          ...officeHourDraft,
+                          start: event.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="End">
+                    <TextInput
+                      type="time"
+                      value={officeHourDraft.end}
+                      onChange={(event) =>
+                        setOfficeHourDraft({
+                          ...officeHourDraft,
+                          end: event.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                <Field label="Notes">
+                  <TextInput
+                    value={officeHourDraft.notes}
+                    onChange={(event) =>
+                      setOfficeHourDraft({
+                        ...officeHourDraft,
+                        notes: event.target.value,
+                      })
+                    }
+                    placeholder="Drop-in, appointment, online"
+                  />
+                </Field>
+                <Button onClick={addOfficeHour}>
+                  <Plus data-icon="inline-start" />
+                  Add office hours
+                </Button>
+              </section>
+
+              <section className="pixel-panel overflow-x-auto p-4">
+                <h2 className="mb-4 text-xl font-black">Office Hours</h2>
+                <div className="grid min-w-[760px] grid-cols-5 gap-3">
+                  {days.map((day) => (
+                    <div key={day} className="grid content-start gap-2">
+                      <div className="border-2 border-violet-300 bg-violet-100 p-2 text-center text-sm font-black">
+                        {day}
+                      </div>
+                      {data.officeHours
+                        .filter((block) => block.day === day)
+                        .sort((a, b) => a.start.localeCompare(b.start))
+                        .map((block) => {
+                          const course = courseById.get(block.courseId);
+                          return (
+                            <div
+                              key={block.id}
+                              className="group border-2 border-violet-200 bg-white p-2"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="grid gap-1">
+                                  <p className="font-black">
+                                    {course?.name ?? 'Course'}
+                                  </p>
+                                  <p className="text-xs text-violet-950/65">
+                                    {block.start} - {block.end}
+                                  </p>
+                                  <p className="text-xs font-semibold">
+                                    {block.teacher ||
+                                      course?.instructor ||
+                                      'Teacher'}
+                                  </p>
+                                  <p className="text-xs font-semibold text-violet-700">
+                                    {block.office || 'Office'}
+                                  </p>
+                                  {block.notes ? (
+                                    <p className="text-xs text-violet-950/65">
+                                      {block.notes}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  aria-label="Delete office hours"
+                                  className="opacity-0 transition group-hover:opacity-100"
+                                  onClick={() =>
+                                    removeItem('officeHours', block.id)
+                                  }
+                                >
+                                  <Trash2 className="size-4" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          ) : null}
+
+          {activeTab === 'notes' ? (
+            <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+              <section className="pixel-panel grid gap-3 p-4">
+                <h2 className="text-xl font-black">New Note</h2>
+                <Field label="Course">
+                  <CourseSelect
+                    courses={data.courses}
+                    value={noteDraft.courseId}
+                    onChange={(value) =>
+                      setNoteDraft({ ...noteDraft, courseId: value })
                     }
                   />
                 </Field>
-              </div>
-              <Field label="Notes">
-                <TextArea
-                  value={hourDraft.notes}
-                  onChange={(event) =>
-                    setHourDraft({ ...hourDraft, notes: event.target.value })
-                  }
-                />
-              </Field>
-              <Button onClick={addHour}>
-                <Plus data-icon="inline-start" />
-                Add hours
-              </Button>
-            </section>
-            <section className="pixel-panel p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-xl font-black">Hours Tracker</h2>
-                <span className="border-2 border-violet-300 bg-violet-100 px-3 py-1 text-sm font-black">
-                  {oneDecimal(totalHours)} total
-                </span>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Event</TableHead>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Hours</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.hours.map((hour) => (
-                    <TableRow key={hour.id}>
-                      <TableCell className="font-semibold">
-                        {hour.event}
-                      </TableCell>
-                      <TableCell>{hour.project || '-'}</TableCell>
-                      <TableCell>{hour.date}</TableCell>
-                      <TableCell>
-                        {hour.start} - {hour.end}
-                      </TableCell>
-                      <TableCell className="font-black">
-                        {oneDecimal(hoursBetween(hour.start, hour.end))}
-                      </TableCell>
-                      <TableCell>
+                <Field label="Title">
+                  <TextInput
+                    value={noteDraft.title}
+                    onChange={(event) =>
+                      setNoteDraft({ ...noteDraft, title: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Note">
+                  <TextArea
+                    value={noteDraft.body}
+                    onChange={(event) =>
+                      setNoteDraft({ ...noteDraft, body: event.target.value })
+                    }
+                  />
+                </Field>
+                <label className="flex items-center gap-2 text-sm font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={noteDraft.pinned}
+                    onChange={(event) =>
+                      setNoteDraft({
+                        ...noteDraft,
+                        pinned: event.target.checked,
+                      })
+                    }
+                  />
+                  Pin note
+                </label>
+                <Button onClick={addNote}>
+                  <Plus data-icon="inline-start" />
+                  Add note
+                </Button>
+              </section>
+              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {[...data.notes]
+                  .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+                  .map((note) => (
+                    <article
+                      key={note.id}
+                      className="pixel-panel grid gap-3 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase text-violet-700">
+                            {courseById.get(note.courseId)?.name ?? 'General'}
+                          </p>
+                          <h3 className="text-lg font-black">
+                            {note.title || 'Untitled note'}
+                          </h3>
+                        </div>
                         <Button
-                          variant="destructive"
+                          variant="ghost"
                           size="icon"
-                          aria-label="Delete hours entry"
-                          onClick={() => removeItem('hours', hour.id)}
+                          aria-label="Delete note"
+                          onClick={() => removeItem('notes', note.id)}
                         >
                           <Trash2 />
                         </Button>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-violet-950/75">
+                        {note.body || 'No note text yet.'}
+                      </p>
+                    </article>
                   ))}
-                </TableBody>
-              </Table>
-            </section>
-          </TabsContent>
-        </Tabs>
+              </section>
+            </div>
+          ) : null}
+
+          {activeTab === 'hours' ? (
+            <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+              <section className="pixel-panel grid gap-3 p-4">
+                <h2 className="text-xl font-black">Log Hours</h2>
+                <Field label="Event">
+                  <TextInput
+                    value={hourDraft.event}
+                    onChange={(event) =>
+                      setHourDraft({ ...hourDraft, event: event.target.value })
+                    }
+                    placeholder="Event"
+                  />
+                </Field>
+                <Field label="Project">
+                  <TextInput
+                    value={hourDraft.project}
+                    onChange={(event) =>
+                      setHourDraft({
+                        ...hourDraft,
+                        project: event.target.value,
+                      })
+                    }
+                    placeholder="Project"
+                  />
+                </Field>
+                <Field label="Date">
+                  <TextInput
+                    type="date"
+                    value={hourDraft.date}
+                    onChange={(event) =>
+                      setHourDraft({ ...hourDraft, date: event.target.value })
+                    }
+                  />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Start">
+                    <TextInput
+                      type="time"
+                      value={hourDraft.start}
+                      onChange={(event) =>
+                        setHourDraft({
+                          ...hourDraft,
+                          start: event.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="End">
+                    <TextInput
+                      type="time"
+                      value={hourDraft.end}
+                      onChange={(event) =>
+                        setHourDraft({ ...hourDraft, end: event.target.value })
+                      }
+                    />
+                  </Field>
+                </div>
+                <Field label="Notes">
+                  <TextArea
+                    value={hourDraft.notes}
+                    onChange={(event) =>
+                      setHourDraft({ ...hourDraft, notes: event.target.value })
+                    }
+                  />
+                </Field>
+                <Button onClick={addHour}>
+                  <Plus data-icon="inline-start" />
+                  Add hours
+                </Button>
+              </section>
+              <section className="pixel-panel p-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-xl font-black">Hours Tracker</h2>
+                  <span className="border-2 border-violet-300 bg-violet-100 px-3 py-1 text-sm font-black">
+                    {oneDecimal(totalHours)} total
+                  </span>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Event</TableHead>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Hours</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.hours.map((hour) => (
+                      <TableRow key={hour.id}>
+                        <TableCell className="font-semibold">
+                          {hour.event}
+                        </TableCell>
+                        <TableCell>{hour.project || '-'}</TableCell>
+                        <TableCell>{hour.date}</TableCell>
+                        <TableCell>
+                          {hour.start} - {hour.end}
+                        </TableCell>
+                        <TableCell className="font-black">
+                          {oneDecimal(hoursBetween(hour.start, hour.end))}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            aria-label="Delete hours entry"
+                            onClick={() => removeItem('hours', hour.id)}
+                          >
+                            <Trash2 />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </section>
+            </div>
+          ) : null}
+        </div>
       </div>
     </main>
   );
