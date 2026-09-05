@@ -10,8 +10,11 @@ import {
   Clock3,
   Download,
   GraduationCap,
+  LinkIcon,
+  ListChecks,
   Plus,
   RotateCcw,
+  ShoppingCart,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -52,6 +55,11 @@ type Course = {
   code: string;
   room: string;
   instructor: string;
+  email?: string;
+  section?: string;
+  teams?: string;
+  extension?: string;
+  weeklyPonderation?: string;
   credits: number;
   color: string;
 };
@@ -113,6 +121,44 @@ type HourEntry = {
   notes: string;
 };
 
+type WebsiteEntry = {
+  id: string;
+  label: string;
+  url: string;
+  courseId: string;
+};
+
+type ShoppingItem = {
+  id: string;
+  item: string;
+  courseId: string;
+  done: boolean;
+};
+
+type HomeworkItem = {
+  id: string;
+  task: string;
+  courseId: string;
+  done: boolean;
+};
+
+type TodoItem = {
+  id: string;
+  task: string;
+  done: boolean;
+};
+
+type TrackerTab =
+  | 'overview'
+  | 'assignments'
+  | 'courses'
+  | 'grades'
+  | 'schedule'
+  | 'office-hours'
+  | 'lists'
+  | 'notes'
+  | 'hours';
+
 type TrackerData = {
   courses: Course[];
   assignments: Assignment[];
@@ -120,6 +166,10 @@ type TrackerData = {
   officeHours: OfficeHourBlock[];
   notes: NoteEntry[];
   hours: HourEntry[];
+  websites: WebsiteEntry[];
+  shopping: ShoppingItem[];
+  homework: HomeworkItem[];
+  todos: TodoItem[];
 };
 
 type CloudStatus =
@@ -161,7 +211,7 @@ const weeks = [
   'Finals Week',
 ];
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-const courseColors = ['#d9c7ff', '#cdb4db', '#ffc8dd', '#bde0fe', '#caffbf'];
+const courseColors = ['#dbeafe', '#bfdbfe', '#eff6ff', '#fef3c7', '#e0f2fe'];
 const storageKey = 'mcgilltrack-template-v1';
 const cloudSaveDelay = 1200;
 
@@ -218,8 +268,13 @@ const defaultData: TrackerData = {
       code: 'COUR 101',
       room: 'Room A',
       instructor: '',
+      email: '',
+      section: '',
+      teams: '',
+      extension: '',
+      weeklyPonderation: '',
       credits: 3,
-      color: '#d9c7ff',
+      color: '#dbeafe',
     },
     {
       id: 'course-2',
@@ -227,8 +282,13 @@ const defaultData: TrackerData = {
       code: 'COUR 102',
       room: 'Room B',
       instructor: '',
+      email: '',
+      section: '',
+      teams: '',
+      extension: '',
+      weeklyPonderation: '',
       credits: 3,
-      color: '#cdb4db',
+      color: '#fef3c7',
     },
     {
       id: 'course-3',
@@ -236,8 +296,13 @@ const defaultData: TrackerData = {
       code: 'COUR 103',
       room: 'Room C',
       instructor: '',
+      email: '',
+      section: '',
+      teams: '',
+      extension: '',
+      weeklyPonderation: '',
       credits: 3,
-      color: '#bde0fe',
+      color: '#dbeafe',
     },
   ],
   assignments: [
@@ -328,6 +393,37 @@ const defaultData: TrackerData = {
       notes: '',
     },
   ],
+  websites: [
+    {
+      id: 'website-1',
+      label: 'Course portal',
+      url: 'https://example.com',
+      courseId: 'course-1',
+    },
+  ],
+  shopping: [
+    {
+      id: 'shopping-1',
+      item: 'Notebook',
+      courseId: 'course-1',
+      done: false,
+    },
+  ],
+  homework: [
+    {
+      id: 'homework-1',
+      task: 'Review lecture notes',
+      courseId: 'course-1',
+      done: false,
+    },
+  ],
+  todos: [
+    {
+      id: 'todo-1',
+      task: 'Check upcoming deadlines',
+      done: false,
+    },
+  ],
 };
 
 const blankAssignment = (courseId: string): Assignment => ({
@@ -387,6 +483,33 @@ const blankHour = (): HourEntry => ({
   notes: '',
 });
 
+const blankWebsite = (courseId: string): WebsiteEntry => ({
+  id: makeId(),
+  label: '',
+  url: '',
+  courseId,
+});
+
+const blankShoppingItem = (courseId: string): ShoppingItem => ({
+  id: makeId(),
+  item: '',
+  courseId,
+  done: false,
+});
+
+const blankHomeworkItem = (courseId: string): HomeworkItem => ({
+  id: makeId(),
+  task: '',
+  courseId,
+  done: false,
+});
+
+const blankTodoItem = (): TodoItem => ({
+  id: makeId(),
+  task: '',
+  done: false,
+});
+
 const numberValue = (value: string) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -418,6 +541,10 @@ const normalizeData = (incoming: Partial<TrackerData>): TrackerData => ({
   officeHours: incoming.officeHours ?? defaultData.officeHours,
   notes: incoming.notes ?? defaultData.notes,
   hours: incoming.hours ?? defaultData.hours,
+  websites: incoming.websites ?? defaultData.websites,
+  shopping: incoming.shopping ?? defaultData.shopping,
+  homework: incoming.homework ?? defaultData.homework,
+  todos: incoming.todos ?? defaultData.todos,
 });
 
 function Field({
@@ -428,7 +555,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-1.5 text-xs font-semibold uppercase text-violet-950/65">
+    <label className="grid gap-1.5 text-xs font-semibold uppercase text-blue-950/65">
       {label}
       {children}
     </label>
@@ -439,7 +566,7 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`h-9 min-w-0 border-2 border-violet-200 bg-white px-3 text-sm shadow-[3px_3px_0_#e9ddff] outline-none transition focus:border-violet-500 ${props.className ?? ''}`}
+      className={`h-9 min-w-0 border-2 border-blue-200 bg-white px-3 text-sm shadow-[3px_3px_0_#fef3c7] outline-none transition focus:border-blue-500 ${props.className ?? ''}`}
     />
   );
 }
@@ -448,7 +575,7 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`min-h-24 min-w-0 resize-y border-2 border-violet-200 bg-white px-3 py-2 text-sm shadow-[3px_3px_0_#e9ddff] outline-none transition focus:border-violet-500 ${props.className ?? ''}`}
+      className={`min-h-24 min-w-0 resize-y border-2 border-blue-200 bg-white px-3 py-2 text-sm shadow-[3px_3px_0_#fef3c7] outline-none transition focus:border-blue-500 ${props.className ?? ''}`}
     />
   );
 }
@@ -464,14 +591,14 @@ function MiniStat({
 }) {
   return (
     <div className="pixel-panel flex min-h-24 items-center gap-4 p-4">
-      <div className="grid size-10 place-items-center border-2 border-violet-300 bg-violet-100 text-violet-700">
+      <div className="grid size-10 place-items-center border-2 border-blue-300 bg-blue-100 text-blue-950/70">
         {icon}
       </div>
       <div>
-        <p className="text-xs font-semibold uppercase text-violet-950/60">
+        <p className="text-xs font-semibold uppercase text-blue-950/60">
           {label}
         </p>
-        <p className="mt-1 text-2xl font-black text-violet-950">{value}</p>
+        <p className="mt-1 text-2xl font-black text-blue-950">{value}</p>
       </div>
     </div>
   );
@@ -485,6 +612,7 @@ export default function Home() {
   const cloudLoaded = useRef(false);
   const syncingUserId = useRef<string | null>(null);
   const [activeCourse, setActiveCourse] = useState(defaultData.courses[0].id);
+  const [activeTab, setActiveTab] = useState<TrackerTab>('overview');
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
   const [user, setUser] = useState<User | null>(null);
@@ -499,6 +627,11 @@ export default function Home() {
     code: '',
     room: '',
     instructor: '',
+    email: '',
+    section: '',
+    teams: '',
+    extension: '',
+    weeklyPonderation: '',
     credits: 3,
     color: courseColors[0],
   });
@@ -515,6 +648,16 @@ export default function Home() {
     blankNote(defaultData.courses[0].id),
   );
   const [hourDraft, setHourDraft] = useState<HourEntry>(blankHour());
+  const [websiteDraft, setWebsiteDraft] = useState<WebsiteEntry>(
+    blankWebsite(defaultData.courses[0].id),
+  );
+  const [shoppingDraft, setShoppingDraft] = useState<ShoppingItem>(
+    blankShoppingItem(defaultData.courses[0].id),
+  );
+  const [homeworkDraft, setHomeworkDraft] = useState<HomeworkItem>(
+    blankHomeworkItem(defaultData.courses[0].id),
+  );
+  const [todoDraft, setTodoDraft] = useState<TodoItem>(blankTodoItem());
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -530,6 +673,10 @@ export default function Home() {
           setScheduleDraft(blankSchedule(parsed.courses[0]?.id ?? ''));
           setOfficeHourDraft(blankOfficeHour(parsed.courses[0]?.id ?? ''));
           setNoteDraft(blankNote(parsed.courses[0]?.id ?? ''));
+          setWebsiteDraft(blankWebsite(parsed.courses[0]?.id ?? ''));
+          setShoppingDraft(blankShoppingItem(parsed.courses[0]?.id ?? ''));
+          setHomeworkDraft(blankHomeworkItem(parsed.courses[0]?.id ?? ''));
+          setTodoDraft(blankTodoItem());
         } catch {
           localStorage.removeItem(storageKey);
         }
@@ -631,6 +778,10 @@ export default function Home() {
         setScheduleDraft(blankSchedule(parsed.courses[0]?.id ?? ''));
         setOfficeHourDraft(blankOfficeHour(parsed.courses[0]?.id ?? ''));
         setNoteDraft(blankNote(parsed.courses[0]?.id ?? ''));
+        setWebsiteDraft(blankWebsite(parsed.courses[0]?.id ?? ''));
+        setShoppingDraft(blankShoppingItem(parsed.courses[0]?.id ?? ''));
+        setHomeworkDraft(blankHomeworkItem(parsed.courses[0]?.id ?? ''));
+        setTodoDraft(blankTodoItem());
         setCloudStatus('saved');
       } catch (error) {
         setCloudStatus('offline');
@@ -706,6 +857,10 @@ export default function Home() {
     (sum, hour) => sum + hoursBetween(hour.start, hour.end),
     0,
   );
+  const totalCredits = data.courses.reduce(
+    (sum, course) => sum + course.credits,
+    0,
+  );
   const completionRate =
     assignmentMetrics.total > 0
       ? assignmentMetrics.done / assignmentMetrics.total
@@ -744,6 +899,58 @@ export default function Home() {
     }));
   };
 
+  const updateWebsite = <K extends keyof WebsiteEntry>(
+    id: string,
+    key: K,
+    value: WebsiteEntry[K],
+  ) => {
+    setData((current) => ({
+      ...current,
+      websites: current.websites.map((website) =>
+        website.id === id ? { ...website, [key]: value } : website,
+      ),
+    }));
+  };
+
+  const updateShopping = <K extends keyof ShoppingItem>(
+    id: string,
+    key: K,
+    value: ShoppingItem[K],
+  ) => {
+    setData((current) => ({
+      ...current,
+      shopping: current.shopping.map((item) =>
+        item.id === id ? { ...item, [key]: value } : item,
+      ),
+    }));
+  };
+
+  const updateHomework = <K extends keyof HomeworkItem>(
+    id: string,
+    key: K,
+    value: HomeworkItem[K],
+  ) => {
+    setData((current) => ({
+      ...current,
+      homework: current.homework.map((item) =>
+        item.id === id ? { ...item, [key]: value } : item,
+      ),
+    }));
+  };
+
+  const updateTodo = <K extends keyof TodoItem>(
+    id: string,
+    key: K,
+    value: TodoItem[K],
+  ) => {
+    setData((current) => ({
+      ...current,
+      todos: current.todos.map((item) =>
+        item.id === id ? { ...item, [key]: value } : item,
+      ),
+    }));
+  };
+
   const addAssignment = () => {
     if (!assignmentDraft.title.trim()) return;
     setData((current) => ({
@@ -770,6 +977,11 @@ export default function Home() {
       code: '',
       room: '',
       instructor: '',
+      email: '',
+      section: '',
+      teams: '',
+      extension: '',
+      weeklyPonderation: '',
       credits: 3,
       color: courseColors[data.courses.length % courseColors.length],
     });
@@ -810,6 +1022,42 @@ export default function Home() {
       hours: [{ ...hourDraft, id: makeId() }, ...current.hours],
     }));
     setHourDraft(blankHour());
+  };
+
+  const addWebsite = () => {
+    if (!websiteDraft.label.trim() && !websiteDraft.url.trim()) return;
+    setData((current) => ({
+      ...current,
+      websites: [{ ...websiteDraft, id: makeId() }, ...current.websites],
+    }));
+    setWebsiteDraft(blankWebsite(websiteDraft.courseId));
+  };
+
+  const addShoppingItem = () => {
+    if (!shoppingDraft.item.trim()) return;
+    setData((current) => ({
+      ...current,
+      shopping: [{ ...shoppingDraft, id: makeId() }, ...current.shopping],
+    }));
+    setShoppingDraft(blankShoppingItem(shoppingDraft.courseId));
+  };
+
+  const addHomeworkItem = () => {
+    if (!homeworkDraft.task.trim()) return;
+    setData((current) => ({
+      ...current,
+      homework: [{ ...homeworkDraft, id: makeId() }, ...current.homework],
+    }));
+    setHomeworkDraft(blankHomeworkItem(homeworkDraft.courseId));
+  };
+
+  const addTodoItem = () => {
+    if (!todoDraft.task.trim()) return;
+    setData((current) => ({
+      ...current,
+      todos: [{ ...todoDraft, id: makeId() }, ...current.todos],
+    }));
+    setTodoDraft(blankTodoItem());
   };
 
   const removeItem = (collection: keyof TrackerData, id: string) => {
@@ -929,15 +1177,15 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-[var(--background)] text-violet-950">
+    <main className="min-h-screen bg-[var(--background)] text-blue-950">
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
         <header className="pixel-panel grid gap-5 p-4 xl:grid-cols-[1fr_auto_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
-            <div className="grid size-12 shrink-0 place-items-center border-2 border-violet-400 bg-violet-200 shadow-[4px_4px_0_#7c3aed]">
+            <div className="grid size-12 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[4px_4px_0_#fef3c7]">
               <BookOpen className="size-6" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-bold uppercase text-violet-800">
+              <p className="text-xs font-bold uppercase text-blue-950/70">
                 {dateLabel}
               </p>
               <h1 className="text-3xl font-black tracking-normal sm:text-4xl">
@@ -969,12 +1217,12 @@ export default function Home() {
               onChange={importData}
             />
           </div>
-          <div className="grid min-h-[112px] w-full max-w-[420px] gap-2 border-2 border-violet-300 bg-white/75 p-3 shadow-[3px_3px_0_#c4b5fd] xl:w-[420px]">
+          <div className="grid min-h-[112px] w-full max-w-[420px] gap-2 border-2 border-blue-300 bg-white/75 p-3 shadow-[3px_3px_0_#bfdbfe] xl:w-[420px]">
             <div className="flex items-center justify-between gap-3">
-              <p className="truncate text-xs font-black uppercase text-violet-900">
+              <p className="truncate text-xs font-black uppercase text-blue-950">
                 {user?.email ?? 'Cloud Account'}
               </p>
-              <span className="min-w-20 border border-violet-300 bg-violet-100 px-2 py-0.5 text-center text-[11px] font-black uppercase text-violet-800">
+              <span className="min-w-20 border border-blue-300 bg-blue-100 px-2 py-0.5 text-center text-[11px] font-black uppercase text-blue-950/70">
                 {cloudStatusLabel}
               </span>
             </div>
@@ -1046,17 +1294,17 @@ export default function Home() {
                 </Button>
               </form>
             ) : (
-              <p className="text-xs font-bold text-violet-800">
+              <p className="text-xs font-bold text-blue-950/70">
                 Add Supabase env vars.
               </p>
             )}
-            <p className="min-h-4 text-xs font-bold text-violet-800">
+            <p className="min-h-4 text-xs font-bold text-blue-950/70">
               {authMessage || (user ? 'Signed in.' : 'Local save is on.')}
             </p>
           </div>
         </header>
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <MiniStat
             label="Assignments"
             value={`${assignmentMetrics.done}/${assignmentMetrics.total}`}
@@ -1077,17 +1325,27 @@ export default function Home() {
             value={oneDecimal(totalHours)}
             icon={<Clock3 className="size-5" />}
           />
+          <MiniStat
+            label="Credits"
+            value={String(totalCredits)}
+            icon={<BookOpen className="size-5" />}
+          />
         </section>
 
-        <Tabs defaultValue="overview" className="gap-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as TrackerTab)}
+          className="gap-4"
+        >
           <div className="overflow-x-auto">
-            <TabsList className="pixel-tabs h-auto min-w-max bg-violet-100 p-1">
+            <TabsList className="pixel-tabs h-auto min-w-max bg-blue-100 p-1">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="assignments">Assignments</TabsTrigger>
               <TabsTrigger value="courses">Courses</TabsTrigger>
               <TabsTrigger value="grades">Grades</TabsTrigger>
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
               <TabsTrigger value="office-hours">Office Hours</TabsTrigger>
+              <TabsTrigger value="lists">Lists</TabsTrigger>
               <TabsTrigger value="notes">Notes</TabsTrigger>
               <TabsTrigger value="hours">Hours</TabsTrigger>
             </TabsList>
@@ -1101,25 +1359,25 @@ export default function Home() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-black">Assignment Board</h2>
-                  <p className="text-sm text-violet-950/65">
+                  <p className="text-sm text-blue-950/65">
                     Live counts, due dates, and progress from your tracker rows.
                   </p>
                 </div>
-                <div className="text-right text-sm font-bold text-violet-700">
+                <div className="text-right text-sm font-bold text-blue-950/70">
                   {percent(completionRate)}
                 </div>
               </div>
               <Progress
                 value={completionRate * 100}
-                className="mb-5 h-3 border border-violet-300 bg-violet-100"
+                className="mb-5 h-3 border border-blue-300 bg-blue-100"
               />
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {statuses.map((status) => (
                   <div
                     key={status}
-                    className="border-2 border-violet-200 bg-white p-3"
+                    className="border-2 border-blue-200 bg-white p-3"
                   >
-                    <p className="text-xs font-bold uppercase text-violet-700">
+                    <p className="text-xs font-bold uppercase text-blue-950/70">
                       {status}
                     </p>
                     <p className="mt-2 text-3xl font-black">
@@ -1131,8 +1389,8 @@ export default function Home() {
                     </p>
                   </div>
                 ))}
-                <div className="border-2 border-fuchsia-200 bg-fuchsia-50 p-3">
-                  <p className="text-xs font-bold uppercase text-fuchsia-700">
+                <div className="border-2 border-blue-200 bg-blue-50 p-3">
+                  <p className="text-xs font-bold uppercase text-blue-950/70">
                     Due This Week
                   </p>
                   <p className="mt-2 text-3xl font-black">
@@ -1157,19 +1415,19 @@ export default function Home() {
                       key={course.id}
                       className={`grid gap-2 border-2 p-3 text-left transition hover:-translate-y-0.5 ${
                         activeCourse === course.id
-                          ? 'border-violet-500 bg-violet-100'
-                          : 'border-violet-200 bg-white'
+                          ? 'border-blue-400 bg-blue-100'
+                          : 'border-blue-200 bg-white'
                       }`}
                       onClick={() => setActiveCourse(course.id)}
                     >
                       <div className="flex items-center gap-3">
                         <span
-                          className="size-4 border-2 border-violet-400"
+                          className="size-4 border-2 border-blue-400"
                           style={{ background: course.color }}
                         />
                         <span className="font-black">{course.name}</span>
                       </div>
-                      <span className="text-sm text-violet-950/65">
+                      <span className="text-sm text-blue-950/65">
                         {course.code || 'No code'} - {course.room || 'No room'}
                       </span>
                       <Progress
@@ -1178,7 +1436,7 @@ export default function Home() {
                             ? (done / courseAssignments.length) * 100
                             : 0
                         }
-                        className="h-2 bg-violet-50"
+                        className="h-2 bg-blue-50"
                       />
                     </button>
                   );
@@ -1331,6 +1589,69 @@ export default function Home() {
                   placeholder="Name"
                 />
               </Field>
+              <Field label="Email">
+                <TextInput
+                  type="email"
+                  value={courseDraft.email ?? ''}
+                  onChange={(event) =>
+                    setCourseDraft({
+                      ...courseDraft,
+                      email: event.target.value,
+                    })
+                  }
+                  placeholder="teacher@email.com"
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Section">
+                  <TextInput
+                    value={courseDraft.section ?? ''}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        section: event.target.value,
+                      })
+                    }
+                    placeholder="001"
+                  />
+                </Field>
+                <Field label="Extension">
+                  <TextInput
+                    value={courseDraft.extension ?? ''}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        extension: event.target.value,
+                      })
+                    }
+                    placeholder="Ext."
+                  />
+                </Field>
+              </div>
+              <Field label="Teams">
+                <TextInput
+                  value={courseDraft.teams ?? ''}
+                  onChange={(event) =>
+                    setCourseDraft({
+                      ...courseDraft,
+                      teams: event.target.value,
+                    })
+                  }
+                  placeholder="Teams channel"
+                />
+              </Field>
+              <Field label="Weekly">
+                <TextInput
+                  value={courseDraft.weeklyPonderation ?? ''}
+                  onChange={(event) =>
+                    setCourseDraft({
+                      ...courseDraft,
+                      weeklyPonderation: event.target.value,
+                    })
+                  }
+                  placeholder="Lecture / lab split"
+                />
+              </Field>
               <div className="flex flex-wrap gap-2">
                 {courseColors.map((color) => (
                   <button
@@ -1338,8 +1659,8 @@ export default function Home() {
                     aria-label={`Use color ${color}`}
                     className={`size-8 border-2 ${
                       courseDraft.color === color
-                        ? 'border-violet-700'
-                        : 'border-violet-200'
+                        ? 'border-blue-700'
+                        : 'border-blue-200'
                     }`}
                     style={{ background: color }}
                     onClick={() => setCourseDraft({ ...courseDraft, color })}
@@ -1352,14 +1673,19 @@ export default function Home() {
               </Button>
             </section>
 
-            <section className="pixel-panel p-4">
-              <Table>
+            <section className="pixel-panel overflow-x-auto p-4">
+              <Table className="min-w-[1120px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Course</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Room</TableHead>
                     <TableHead>Instructor</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Ext.</TableHead>
+                    <TableHead>Section</TableHead>
+                    <TableHead>Teams</TableHead>
+                    <TableHead>Weekly</TableHead>
                     <TableHead>Credits</TableHead>
                     <TableHead />
                   </TableRow>
@@ -1401,6 +1727,64 @@ export default function Home() {
                               event.target.value,
                             )
                           }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextInput
+                          type="email"
+                          value={course.email ?? ''}
+                          onChange={(event) =>
+                            updateCourse(course.id, 'email', event.target.value)
+                          }
+                          className="w-52"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextInput
+                          value={course.extension ?? ''}
+                          onChange={(event) =>
+                            updateCourse(
+                              course.id,
+                              'extension',
+                              event.target.value,
+                            )
+                          }
+                          className="w-24"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextInput
+                          value={course.section ?? ''}
+                          onChange={(event) =>
+                            updateCourse(
+                              course.id,
+                              'section',
+                              event.target.value,
+                            )
+                          }
+                          className="w-28"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextInput
+                          value={course.teams ?? ''}
+                          onChange={(event) =>
+                            updateCourse(course.id, 'teams', event.target.value)
+                          }
+                          className="w-44"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextInput
+                          value={course.weeklyPonderation ?? ''}
+                          onChange={(event) =>
+                            updateCourse(
+                              course.id,
+                              'weeklyPonderation',
+                              event.target.value,
+                            )
+                          }
+                          className="w-40"
                         />
                       </TableCell>
                       <TableCell>
@@ -1549,7 +1933,7 @@ export default function Home() {
                 label="Current average"
                 value={weightedPossible > 0 ? percent(currentGrade) : '-'}
               />
-              <div className="grid gap-2 border-2 border-violet-200 bg-white p-3">
+              <div className="grid gap-2 border-2 border-blue-200 bg-white p-3">
                 {data.courses.map((course) => {
                   const entries = data.assignments.filter(
                     (assignment) =>
@@ -1669,7 +2053,7 @@ export default function Home() {
               <div className="grid min-w-[760px] grid-cols-5 gap-3">
                 {days.map((day) => (
                   <div key={day} className="grid content-start gap-2">
-                    <div className="border-2 border-violet-300 bg-violet-100 p-2 text-center text-sm font-black">
+                    <div className="border-2 border-blue-300 bg-blue-100 p-2 text-center text-sm font-black">
                       {day}
                     </div>
                     {data.schedule
@@ -1680,14 +2064,14 @@ export default function Home() {
                         return (
                           <div
                             key={block.id}
-                            className="group border-2 border-violet-200 bg-white p-2"
+                            className="group border-2 border-blue-200 bg-white p-2"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div>
                                 <p className="font-black">
                                   {course?.name ?? 'Course'}
                                 </p>
-                                <p className="text-xs text-violet-950/65">
+                                <p className="text-xs text-blue-950/65">
                                   {block.start} - {block.end}
                                 </p>
                                 <p className="text-xs font-semibold">
@@ -1820,7 +2204,7 @@ export default function Home() {
               <div className="grid min-w-[760px] grid-cols-5 gap-3">
                 {days.map((day) => (
                   <div key={day} className="grid content-start gap-2">
-                    <div className="border-2 border-violet-300 bg-violet-100 p-2 text-center text-sm font-black">
+                    <div className="border-2 border-blue-300 bg-blue-100 p-2 text-center text-sm font-black">
                       {day}
                     </div>
                     {data.officeHours
@@ -1831,14 +2215,14 @@ export default function Home() {
                         return (
                           <div
                             key={block.id}
-                            className="group border-2 border-violet-200 bg-white p-2"
+                            className="group border-2 border-blue-200 bg-white p-2"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="grid gap-1">
                                 <p className="font-black">
                                   {course?.name ?? 'Course'}
                                 </p>
-                                <p className="text-xs text-violet-950/65">
+                                <p className="text-xs text-blue-950/65">
                                   {block.start} - {block.end}
                                 </p>
                                 <p className="text-xs font-semibold">
@@ -1846,11 +2230,11 @@ export default function Home() {
                                     course?.instructor ||
                                     'Teacher'}
                                 </p>
-                                <p className="text-xs font-semibold text-violet-700">
+                                <p className="text-xs font-semibold text-blue-950/70">
                                   {block.office || 'Office'}
                                 </p>
                                 {block.notes ? (
-                                  <p className="text-xs text-violet-950/65">
+                                  <p className="text-xs text-blue-950/65">
                                     {block.notes}
                                   </p>
                                 ) : null}
@@ -1868,6 +2252,301 @@ export default function Home() {
                           </div>
                         );
                       })}
+                  </div>
+                ))}
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="lists" className="grid gap-4 xl:grid-cols-2">
+            <section className="pixel-panel grid gap-4 p-4">
+              <div className="flex items-center gap-3">
+                <LinkIcon className="size-5 text-blue-950/70" />
+                <h2 className="text-xl font-black">Important Websites</h2>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
+                <Field label="Course">
+                  <CourseSelect
+                    courses={data.courses}
+                    value={websiteDraft.courseId}
+                    onChange={(value) =>
+                      setWebsiteDraft({ ...websiteDraft, courseId: value })
+                    }
+                  />
+                </Field>
+                <Field label="Website">
+                  <TextInput
+                    value={websiteDraft.label}
+                    onChange={(event) =>
+                      setWebsiteDraft({
+                        ...websiteDraft,
+                        label: event.target.value,
+                      })
+                    }
+                    placeholder="Course portal"
+                  />
+                </Field>
+                <Field label="URL">
+                  <TextInput
+                    value={websiteDraft.url}
+                    onChange={(event) =>
+                      setWebsiteDraft({
+                        ...websiteDraft,
+                        url: event.target.value,
+                      })
+                    }
+                    placeholder="https://..."
+                  />
+                </Field>
+                <Button className="self-end" onClick={addWebsite}>
+                  <Plus data-icon="inline-start" />
+                  Add
+                </Button>
+              </div>
+              <div className="grid gap-2">
+                {data.websites.map((website) => (
+                  <div
+                    key={website.id}
+                    className="grid gap-2 border-2 border-blue-200 bg-white p-3 lg:grid-cols-[1fr_1.1fr_auto]"
+                  >
+                    <div className="grid gap-1">
+                      <TextInput
+                        value={website.label}
+                        onChange={(event) =>
+                          updateWebsite(website.id, 'label', event.target.value)
+                        }
+                        aria-label="Website label"
+                      />
+                      <p className="text-xs font-semibold text-blue-950/65">
+                        {courseById.get(website.courseId)?.name ?? 'Course'}
+                      </p>
+                    </div>
+                    <TextInput
+                      value={website.url}
+                      onChange={(event) =>
+                        updateWebsite(website.id, 'url', event.target.value)
+                      }
+                      aria-label="Website URL"
+                    />
+                    <div className="flex items-center gap-2">
+                      {website.url ? (
+                        <a
+                          className="inline-flex h-7 items-center justify-center border border-blue-200 bg-white px-2.5 text-sm font-medium hover:bg-blue-50"
+                          href={website.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open
+                        </a>
+                      ) : null}
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        aria-label="Delete website"
+                        onClick={() => removeItem('websites', website.id)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="pixel-panel grid gap-4 p-4">
+              <div className="flex items-center gap-3">
+                <ShoppingCart className="size-5 text-amber-600" />
+                <h2 className="text-xl font-black">Shopping List</h2>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                <Field label="Course">
+                  <CourseSelect
+                    courses={data.courses}
+                    value={shoppingDraft.courseId}
+                    onChange={(value) =>
+                      setShoppingDraft({ ...shoppingDraft, courseId: value })
+                    }
+                  />
+                </Field>
+                <Field label="Item">
+                  <TextInput
+                    value={shoppingDraft.item}
+                    onChange={(event) =>
+                      setShoppingDraft({
+                        ...shoppingDraft,
+                        item: event.target.value,
+                      })
+                    }
+                    placeholder="Notebook"
+                  />
+                </Field>
+                <Button className="self-end" onClick={addShoppingItem}>
+                  <Plus data-icon="inline-start" />
+                  Add
+                </Button>
+              </div>
+              <div className="grid gap-2">
+                {data.shopping.map((item) => (
+                  <div
+                    key={item.id}
+                    className="grid gap-2 border-2 border-blue-200 bg-white p-3 lg:grid-cols-[auto_1fr_auto]"
+                  >
+                    <input
+                      className="mt-2 size-4"
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={(event) =>
+                        updateShopping(item.id, 'done', event.target.checked)
+                      }
+                      aria-label="Mark shopping item done"
+                    />
+                    <div className="grid gap-1">
+                      <TextInput
+                        value={item.item}
+                        onChange={(event) =>
+                          updateShopping(item.id, 'item', event.target.value)
+                        }
+                        aria-label="Shopping item"
+                      />
+                      <p className="text-xs font-semibold text-blue-950/65">
+                        {courseById.get(item.courseId)?.name ?? 'Course'}
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      aria-label="Delete shopping item"
+                      onClick={() => removeItem('shopping', item.id)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="pixel-panel grid gap-4 p-4">
+              <div className="flex items-center gap-3">
+                <BookOpen className="size-5 text-blue-950/70" />
+                <h2 className="text-xl font-black">Homework List</h2>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                <Field label="Course">
+                  <CourseSelect
+                    courses={data.courses}
+                    value={homeworkDraft.courseId}
+                    onChange={(value) =>
+                      setHomeworkDraft({ ...homeworkDraft, courseId: value })
+                    }
+                  />
+                </Field>
+                <Field label="Task">
+                  <TextInput
+                    value={homeworkDraft.task}
+                    onChange={(event) =>
+                      setHomeworkDraft({
+                        ...homeworkDraft,
+                        task: event.target.value,
+                      })
+                    }
+                    placeholder="Problem set"
+                  />
+                </Field>
+                <Button className="self-end" onClick={addHomeworkItem}>
+                  <Plus data-icon="inline-start" />
+                  Add
+                </Button>
+              </div>
+              <div className="grid gap-2">
+                {data.homework.map((item) => (
+                  <div
+                    key={item.id}
+                    className="grid gap-2 border-2 border-blue-200 bg-white p-3 lg:grid-cols-[auto_1fr_auto]"
+                  >
+                    <input
+                      className="mt-2 size-4"
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={(event) =>
+                        updateHomework(item.id, 'done', event.target.checked)
+                      }
+                      aria-label="Mark homework done"
+                    />
+                    <div className="grid gap-1">
+                      <TextInput
+                        value={item.task}
+                        onChange={(event) =>
+                          updateHomework(item.id, 'task', event.target.value)
+                        }
+                        aria-label="Homework task"
+                      />
+                      <p className="text-xs font-semibold text-blue-950/65">
+                        {courseById.get(item.courseId)?.name ?? 'Course'}
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      aria-label="Delete homework"
+                      onClick={() => removeItem('homework', item.id)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="pixel-panel grid gap-4 p-4">
+              <div className="flex items-center gap-3">
+                <ListChecks className="size-5 text-amber-600" />
+                <h2 className="text-xl font-black">To Do List</h2>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+                <Field label="Task">
+                  <TextInput
+                    value={todoDraft.task}
+                    onChange={(event) =>
+                      setTodoDraft({ ...todoDraft, task: event.target.value })
+                    }
+                    placeholder="Check upcoming deadlines"
+                  />
+                </Field>
+                <Button className="self-end" onClick={addTodoItem}>
+                  <Plus data-icon="inline-start" />
+                  Add
+                </Button>
+              </div>
+              <div className="grid gap-2">
+                {data.todos.map((item) => (
+                  <div
+                    key={item.id}
+                    className="grid gap-2 border-2 border-blue-200 bg-white p-3 lg:grid-cols-[auto_1fr_auto]"
+                  >
+                    <input
+                      className="mt-2 size-4"
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={(event) =>
+                        updateTodo(item.id, 'done', event.target.checked)
+                      }
+                      aria-label="Mark task done"
+                    />
+                    <TextInput
+                      value={item.task}
+                      onChange={(event) =>
+                        updateTodo(item.id, 'task', event.target.value)
+                      }
+                      aria-label="To do task"
+                    />
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      aria-label="Delete task"
+                      onClick={() => removeItem('todos', item.id)}
+                    >
+                      <Trash2 />
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1927,7 +2606,7 @@ export default function Home() {
                   <article key={note.id} className="pixel-panel grid gap-3 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-xs font-bold uppercase text-violet-700">
+                        <p className="text-xs font-bold uppercase text-blue-950/70">
                           {courseById.get(note.courseId)?.name ?? 'General'}
                         </p>
                         <h3 className="text-lg font-black">
@@ -1943,7 +2622,7 @@ export default function Home() {
                         <Trash2 />
                       </Button>
                     </div>
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-violet-950/75">
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-blue-950/75">
                       {note.body || 'No note text yet.'}
                     </p>
                   </article>
@@ -2020,7 +2699,7 @@ export default function Home() {
             <section className="pixel-panel p-4">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-xl font-black">Hours Tracker</h2>
-                <span className="border-2 border-violet-300 bg-violet-100 px-3 py-1 text-sm font-black">
+                <span className="border-2 border-blue-300 bg-blue-100 px-3 py-1 text-sm font-black">
                   {oneDecimal(totalHours)} total
                 </span>
               </div>
@@ -2153,7 +2832,7 @@ function AssignmentTable({
           return (
             <TableRow
               key={assignment.id}
-              className={overdue ? 'bg-fuchsia-50' : ''}
+              className={overdue ? 'bg-orange-50' : ''}
             >
               <TableCell>
                 {courseById.get(assignment.courseId)?.name ?? 'Course'}
@@ -2254,7 +2933,7 @@ function AssignmentTable({
                 />
               </TableCell>
               <TableCell
-                className={`font-black ${overdue ? 'text-fuchsia-700' : ''}`}
+                className={`font-black ${overdue ? 'text-orange-700' : ''}`}
               >
                 {left === null
                   ? '-'
@@ -2305,8 +2984,8 @@ function AssignmentTable({
 
 function MiniGrade({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-2 border-violet-200 bg-white p-3">
-      <p className="text-xs font-bold uppercase text-violet-700">{label}</p>
+    <div className="border-2 border-blue-200 bg-white p-3">
+      <p className="text-xs font-bold uppercase text-blue-950/70">{label}</p>
       <p className="mt-1 text-2xl font-black">{value}</p>
     </div>
   );
