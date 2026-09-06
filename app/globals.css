@@ -142,9 +142,10 @@ body {
   }
 
   .pixel-tabs [data-slot='tabs-trigger'][data-active] {
+    z-index: 1;
     border-color: oklch(0.56 0.13 252);
     background: oklch(0.998 0.003 245);
-    box-shadow: 3px 3px 0 oklch(0.88 0.045 68);
+    box-shadow: 3px 3px 0 oklch(0.84 0.065 68);
   }
 
   [data-slot='tabs-content'][hidden] {

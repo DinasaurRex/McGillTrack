@@ -271,13 +271,15 @@ const todayIso = () => {
   return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
 };
 
-const addDays = (daysToAdd: number) => {
-  const date = new Date(`${todayIso()}T00:00:00`);
+const initialTemplateDate = '2026-09-01';
+
+const addDays = (daysToAdd: number, fromDate = todayIso()) => {
+  const date = new Date(`${fromDate}T00:00:00`);
   date.setDate(date.getDate() + daysToAdd);
   return date.toISOString().slice(0, 10);
 };
 
-const defaultData: TrackerData = {
+const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
   courses: [
     {
       id: 'course-1',
@@ -331,7 +333,7 @@ const defaultData: TrackerData = {
       status: 'In Progress',
       priority: 'Medium',
       week: 'Week 1',
-      dueDate: addDays(3),
+      dueDate: addDays(3, baseDate),
       weight: 5,
       submitted: false,
       graded: false,
@@ -349,7 +351,7 @@ const defaultData: TrackerData = {
       status: 'Not Started',
       priority: 'Low',
       week: 'Week 2',
-      dueDate: addDays(8),
+      dueDate: addDays(8, baseDate),
       weight: 0,
       submitted: false,
       graded: false,
@@ -441,7 +443,9 @@ const defaultData: TrackerData = {
       done: false,
     },
   ],
-};
+});
+
+const defaultData = createDefaultData();
 
 const blankAssignment = (courseId: string): Assignment => ({
   id: makeId(),
@@ -679,12 +683,14 @@ export default function Home() {
 
   useEffect(() => {
     queueMicrotask(() => {
+      let hydrated = false;
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         try {
           const parsed = normalizeData(
             JSON.parse(saved) as Partial<TrackerData>,
           );
+          hydrated = true;
           setData(parsed);
           setActiveCourse(parsed.courses[0]?.id ?? '');
           setAssignmentDraft(blankAssignment(parsed.courses[0]?.id ?? ''));
@@ -698,6 +704,20 @@ export default function Home() {
         } catch {
           localStorage.removeItem(storageKey);
         }
+      }
+      if (!hydrated) {
+        const currentDefaults = createDefaultData(todayIso());
+        const firstCourseId = currentDefaults.courses[0]?.id ?? '';
+        setData(currentDefaults);
+        setActiveCourse(firstCourseId);
+        setAssignmentDraft(blankAssignment(firstCourseId));
+        setScheduleDraft(blankSchedule(firstCourseId));
+        setOfficeHourDraft(blankOfficeHour(firstCourseId));
+        setNoteDraft(blankNote(firstCourseId));
+        setWebsiteDraft(blankWebsite(firstCourseId));
+        setShoppingDraft(blankShoppingItem(firstCourseId));
+        setHomeworkDraft(blankHomeworkItem(firstCourseId));
+        setTodoDraft(blankTodoItem());
       }
       setDateLabel(
         new Date().toLocaleDateString(undefined, {
@@ -1086,8 +1106,9 @@ export default function Home() {
   };
 
   const resetTemplate = () => {
-    setData(defaultData);
-    setActiveCourse(defaultData.courses[0].id);
+    const currentDefaults = createDefaultData(todayIso());
+    setData(currentDefaults);
+    setActiveCourse(currentDefaults.courses[0]?.id ?? '');
   };
 
   const exportData = () => {
@@ -1240,7 +1261,7 @@ export default function Home() {
               <p className="truncate text-xs font-black uppercase text-blue-950">
                 {user?.email ?? 'Cloud Account'}
               </p>
-              <span className="min-w-20 border border-blue-300 bg-amber-50 px-2 py-0.5 text-center text-[11px] font-black uppercase text-blue-950/70">
+              <span className="min-w-20 border border-blue-300 bg-blue-50 px-2 py-0.5 text-center text-[11px] font-black uppercase text-blue-950/70">
                 {cloudStatusLabel}
               </span>
             </div>
@@ -1386,7 +1407,7 @@ export default function Home() {
               </div>
               <Progress
                 value={completionRate * 100}
-                className="mb-5 h-3 border border-blue-300 bg-amber-50"
+                className="mb-5 h-3 border border-blue-300 bg-blue-50"
               />
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {statuses.map((status) => (
