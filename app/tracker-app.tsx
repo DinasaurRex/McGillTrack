@@ -569,7 +569,7 @@ const timeToMinutes = (time: string) => {
   return hours * 60 + minutes;
 };
 
-const scheduleBlockLayout = (block: ScheduleBlock) => {
+const scheduleBlockLayout = (block: Pick<ScheduleBlock, 'start' | 'end'>) => {
   const start = Math.min(
     scheduleEndMinutes,
     Math.max(scheduleStartMinutes, timeToMinutes(block.start)),
@@ -2335,52 +2335,87 @@ export default function Home() {
 
             <section className="pixel-panel overflow-x-auto p-4">
               <h2 className="mb-4 text-xl font-black">Office Hours</h2>
-              <div className="grid min-w-[760px] grid-cols-5 gap-3">
+              <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
+                <div />
                 {days.map((day) => (
-                  <div key={day} className="grid content-start gap-2">
-                    <div className="border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black">
-                      {day}
-                    </div>
+                  <div
+                    key={day}
+                    className="mx-1 border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black"
+                  >
+                    {day}
+                  </div>
+                ))}
+                <div
+                  className="relative border-r border-blue-200"
+                  style={{ height: scheduleGridHeight }}
+                >
+                  {scheduleHours.map((hour) => (
+                    <span
+                      key={hour}
+                      className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
+                      style={{
+                        top:
+                          ((hour - scheduleStartHour) /
+                            (scheduleEndHour - scheduleStartHour)) *
+                          scheduleGridHeight,
+                      }}
+                    >
+                      {formatScheduleHour(hour)}
+                    </span>
+                  ))}
+                </div>
+                {days.map((day) => (
+                  <div
+                    key={day}
+                    className="schedule-day-column relative border-r border-blue-200"
+                    style={{ height: scheduleGridHeight }}
+                  >
                     {data.officeHours
                       .filter((block) => block.day === day)
                       .sort((a, b) => a.start.localeCompare(b.start))
                       .map((block) => {
                         const course = courseById.get(block.courseId);
+                        const layout = scheduleBlockLayout(block);
                         return (
                           <div
                             key={block.id}
-                            className="group border-2 border-blue-200 bg-white p-2"
+                            className="group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 py-1.5 text-center"
+                            style={{
+                              top: layout.top,
+                              height: layout.height,
+                              background: course?.color ?? '#dbeafe',
+                            }}
                           >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="grid gap-1">
-                                <p className="font-black">
+                            <div className="flex h-full min-h-0 items-center justify-center">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-black leading-tight">
                                   {course?.name ?? 'Course'}
                                 </p>
-                                <p className="text-xs text-blue-950/65">
+                                <p className="text-xs leading-tight text-blue-950/70">
                                   {block.start} - {block.end}
                                 </p>
-                                <p className="text-xs font-semibold">
+                                <p className="truncate text-xs font-semibold leading-tight">
                                   {block.teacher ||
                                     course?.instructor ||
                                     'Teacher'}
                                 </p>
-                                <p className="text-xs font-semibold text-blue-950/70">
+                                <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
                                   {block.office || 'Office'}
                                 </p>
                                 {block.notes ? (
-                                  <p className="text-xs text-blue-950/65">
+                                  <p className="truncate text-xs leading-tight text-blue-950/65">
                                     {block.notes}
                                   </p>
                                 ) : null}
                               </div>
                               <button
                                 aria-label="Delete office hours"
-                                className="opacity-0 transition group-hover:opacity-100"
+                                className="absolute top-1 right-1 opacity-0 transition group-hover:opacity-100"
                                 onClick={() =>
                                   removeItem('officeHours', block.id)
                                 }
                               >
-                                <Trash2 className="size-4" />
+                                <Trash2 className="size-3.5" />
                               </button>
                             </div>
                           </div>
