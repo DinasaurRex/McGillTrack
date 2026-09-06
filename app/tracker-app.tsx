@@ -228,6 +228,13 @@ const weeks = [
   'Finals Week',
 ];
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const weekdayLabels: Record<string, string> = {
+  Monday: 'M',
+  Tuesday: 'T',
+  Wednesday: 'W',
+  Thursday: 'T',
+  Friday: 'F',
+};
 const courseColors = ['#dbeafe', '#bfdbfe', '#eff6ff', '#fef3c7', '#e0f2fe'];
 const storageKey = 'mcgilltrack-template-v1';
 const cloudSaveDelay = 1200;
@@ -641,6 +648,50 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   );
 }
 
+function WeekdayToggleGroup({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (value: string[]) => void;
+}) {
+  const toggleDay = (day: string) => {
+    if (value.includes(day)) {
+      onChange(value.length > 1 ? value.filter((item) => item !== day) : value);
+      return;
+    }
+
+    onChange(days.filter((item) => item === day || value.includes(item)));
+  };
+
+  return (
+    <fieldset
+      className="flex flex-wrap gap-2 border-0 p-0"
+      aria-label="Repeat on"
+    >
+      {days.map((day) => {
+        const selected = value.includes(day);
+        return (
+          <button
+            key={day}
+            type="button"
+            aria-pressed={selected}
+            aria-label={day}
+            className={`grid size-9 place-items-center rounded-full border-2 text-sm font-black transition ${
+              selected
+                ? 'border-blue-400 bg-blue-200 text-blue-950'
+                : 'border-blue-200 bg-white text-blue-950/55 hover:bg-blue-50'
+            }`}
+            onClick={() => toggleDay(day)}
+          >
+            {weekdayLabels[day]}
+          </button>
+        );
+      })}
+    </fieldset>
+  );
+}
+
 function MiniStat({
   label,
   value,
@@ -703,9 +754,15 @@ export default function Home() {
   const [scheduleDraft, setScheduleDraft] = useState<ScheduleBlock>(
     blankSchedule(defaultData.courses[0].id),
   );
+  const [scheduleDraftDays, setScheduleDraftDays] = useState<string[]>([
+    'Monday',
+  ]);
   const [officeHourDraft, setOfficeHourDraft] = useState<OfficeHourBlock>(
     blankOfficeHour(defaultData.courses[0].id),
   );
+  const [officeHourDraftDays, setOfficeHourDraftDays] = useState<string[]>([
+    'Monday',
+  ]);
   const [noteDraft, setNoteDraft] = useState<NoteEntry>(
     blankNote(defaultData.courses[0].id),
   );
@@ -1066,22 +1123,45 @@ export default function Home() {
   };
 
   const addSchedule = () => {
+    const selectedDays = scheduleDraftDays.length
+      ? scheduleDraftDays
+      : [scheduleDraft.day];
     setData((current) => ({
       ...current,
-      schedule: [...current.schedule, { ...scheduleDraft, id: makeId() }],
+      schedule: [
+        ...current.schedule,
+        ...selectedDays.map((day) => ({
+          ...scheduleDraft,
+          id: makeId(),
+          day,
+        })),
+      ],
     }));
-    setScheduleDraft(blankSchedule(scheduleDraft.courseId));
+    setScheduleDraft({
+      ...blankSchedule(scheduleDraft.courseId),
+      day: selectedDays[0] ?? 'Monday',
+    });
   };
 
   const addOfficeHour = () => {
+    const selectedDays = officeHourDraftDays.length
+      ? officeHourDraftDays
+      : [officeHourDraft.day];
     setData((current) => ({
       ...current,
       officeHours: [
         ...current.officeHours,
-        { ...officeHourDraft, id: makeId() },
+        ...selectedDays.map((day) => ({
+          ...officeHourDraft,
+          id: makeId(),
+          day,
+        })),
       ],
     }));
-    setOfficeHourDraft(blankOfficeHour(officeHourDraft.courseId));
+    setOfficeHourDraft({
+      ...blankOfficeHour(officeHourDraft.courseId),
+      day: selectedDays[0] ?? 'Monday',
+    });
   };
 
   const addNote = () => {
@@ -2086,23 +2166,21 @@ export default function Home() {
                   }
                 />
               </Field>
-              <Field label="Day">
-                <NativeSelect
-                  value={scheduleDraft.day}
-                  onChange={(event) =>
+              <div className="grid gap-1.5">
+                <p className="text-xs font-semibold uppercase text-blue-950/65">
+                  Day
+                </p>
+                <WeekdayToggleGroup
+                  value={scheduleDraftDays}
+                  onChange={(selectedDays) => {
+                    setScheduleDraftDays(selectedDays);
                     setScheduleDraft({
                       ...scheduleDraft,
-                      day: event.target.value,
-                    })
-                  }
-                >
-                  {days.map((day) => (
-                    <NativeSelectOption key={day} value={day}>
-                      {day}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </Field>
+                      day: selectedDays[0] ?? scheduleDraft.day,
+                    });
+                  }}
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Start">
                   <TextInput
@@ -2272,23 +2350,21 @@ export default function Home() {
                   placeholder="Office, building, or Zoom link"
                 />
               </Field>
-              <Field label="Day">
-                <NativeSelect
-                  value={officeHourDraft.day}
-                  onChange={(event) =>
+              <div className="grid gap-1.5">
+                <p className="text-xs font-semibold uppercase text-blue-950/65">
+                  Day
+                </p>
+                <WeekdayToggleGroup
+                  value={officeHourDraftDays}
+                  onChange={(selectedDays) => {
+                    setOfficeHourDraftDays(selectedDays);
                     setOfficeHourDraft({
                       ...officeHourDraft,
-                      day: event.target.value,
-                    })
-                  }
-                >
-                  {days.map((day) => (
-                    <NativeSelectOption key={day} value={day}>
-                      {day}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </Field>
+                      day: selectedDays[0] ?? officeHourDraft.day,
+                    });
+                  }}
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Start">
                   <TextInput
