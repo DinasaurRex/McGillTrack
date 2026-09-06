@@ -9,6 +9,8 @@ import {
   BookOpen,
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Download,
   GraduationCap,
@@ -75,6 +77,7 @@ type Assignment = {
   priority: Priority;
   week: string;
   dueDate: string;
+  dueTime?: string;
   weight: number;
   submitted: boolean;
   graded: boolean;
@@ -152,6 +155,7 @@ type TodoItem = {
 
 type TrackerTab =
   | 'overview'
+  | 'weekly'
   | 'assignments'
   | 'courses'
   | 'grades'
@@ -163,6 +167,7 @@ type TrackerTab =
 
 const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'overview', label: 'Overview', href: '/' },
+  { value: 'weekly', label: 'Weekly', href: '/weekly' },
   { value: 'assignments', label: 'Assignments', href: '/assignments' },
   { value: 'courses', label: 'Courses', href: '/courses' },
   { value: 'grades', label: 'Grades', href: '/grades' },
@@ -235,6 +240,20 @@ const weekdayLabels: Record<string, string> = {
   Thursday: 'T',
   Friday: 'F',
 };
+const shortMonths = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 const courseColors = ['#dbeafe', '#bfdbfe', '#eff6ff', '#fef3c7', '#e0f2fe'];
 const storageKey = 'mcgilltrack-template-v1';
 const cloudSaveDelay = 1200;
@@ -285,6 +304,52 @@ const addDays = (daysToAdd: number, fromDate = todayIso()) => {
   date.setDate(date.getDate() + daysToAdd);
   return date.toISOString().slice(0, 10);
 };
+
+const parseIsoDate = (value: string) => {
+  if (!value) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+};
+
+const dateToIso = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const startOfWeekIso = (value: string) => {
+  const date = parseIsoDate(value) ?? parseIsoDate(initialTemplateDate);
+  if (!date) return initialTemplateDate;
+  const day = date.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + mondayOffset);
+  return dateToIso(date);
+};
+
+const addIsoDays = (value: string, daysToAdd: number) => {
+  const date = parseIsoDate(value) ?? parseIsoDate(initialTemplateDate);
+  if (!date) return initialTemplateDate;
+  date.setDate(date.getDate() + daysToAdd);
+  return dateToIso(date);
+};
+
+const dayFromIsoDate = (value: string) => {
+  const date = parseIsoDate(value);
+  if (!date) return null;
+  const index = date.getDay() - 1;
+  return days[index] ?? null;
+};
+
+const formatMonthDay = (value: string) => {
+  const date = parseIsoDate(value);
+  if (!date) return value;
+  return `${shortMonths[date.getMonth()]} ${date.getDate()}`;
+};
+
+const formatWeekRange = (weekStart: string) =>
+  `${formatMonthDay(weekStart)} - ${formatMonthDay(addIsoDays(weekStart, 4))}`;
 
 const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
   courses: [
@@ -341,6 +406,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       priority: 'Medium',
       week: 'Week 1',
       dueDate: addDays(3, baseDate),
+      dueTime: '',
       weight: 5,
       submitted: false,
       graded: false,
@@ -359,6 +425,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       priority: 'Low',
       week: 'Week 2',
       dueDate: addDays(8, baseDate),
+      dueTime: '',
       weight: 0,
       submitted: false,
       graded: false,
@@ -463,6 +530,7 @@ const blankAssignment = (courseId: string): Assignment => ({
   priority: 'Medium',
   week: 'Week 1',
   dueDate: todayIso(),
+  dueTime: '',
   weight: 0,
   submitted: false,
   graded: false,
@@ -576,6 +644,13 @@ const timeToMinutes = (time: string) => {
   return hours * 60 + minutes;
 };
 
+const addMinutesToTime = (time: string, minutesToAdd: number) => {
+  const total = timeToMinutes(time) + minutesToAdd;
+  const hours = Math.floor(total / 60) % 24;
+  const minutes = total % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
 const scheduleBlockLayout = (block: Pick<ScheduleBlock, 'start' | 'end'>) => {
   const start = Math.min(
     scheduleEndMinutes,
@@ -602,9 +677,17 @@ const formatScheduleHour = (hour: number) => {
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value: number) => (Math.round(value * 10) / 10).toFixed(1);
 
+const normalizeAssignments = (
+  assignments = defaultData.assignments,
+): Assignment[] =>
+  assignments.map((assignment) => ({
+    ...assignment,
+    dueTime: assignment.dueTime ?? '',
+  }));
+
 const normalizeData = (incoming: Partial<TrackerData>): TrackerData => ({
   courses: incoming.courses ?? defaultData.courses,
-  assignments: incoming.assignments ?? defaultData.assignments,
+  assignments: normalizeAssignments(incoming.assignments),
   schedule: incoming.schedule ?? defaultData.schedule,
   officeHours: incoming.officeHours ?? defaultData.officeHours,
   notes: incoming.notes ?? defaultData.notes,
@@ -726,6 +809,11 @@ export default function Home() {
   const syncingUserId = useRef<string | null>(null);
   const [activeCourse, setActiveCourse] = useState(defaultData.courses[0].id);
   const activeTab = tabFromPathname(pathname);
+  const [weeklyWeekStart, setWeeklyWeekStart] = useState(
+    startOfWeekIso(initialTemplateDate),
+  );
+  const [weeklyShowClasses, setWeeklyShowClasses] = useState(true);
+  const [weeklyShowAssignments, setWeeklyShowAssignments] = useState(true);
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
   const [user, setUser] = useState<User | null>(null);
@@ -823,6 +911,7 @@ export default function Home() {
           day: 'numeric',
         }),
       );
+      setWeeklyWeekStart(startOfWeekIso(todayIso()));
       setStorageReady(true);
     });
   }, []);
@@ -1000,6 +1089,21 @@ export default function Home() {
     assignmentMetrics.total > 0
       ? assignmentMetrics.done / assignmentMetrics.total
       : 0;
+  const weeklyDates = useMemo(
+    () => days.map((_day, index) => addIsoDays(weeklyWeekStart, index)),
+    [weeklyWeekStart],
+  );
+  const weeklyDateSet = useMemo(() => new Set(weeklyDates), [weeklyDates]);
+  const weeklyAssignments = useMemo(
+    () =>
+      data.assignments.filter(
+        (assignment) =>
+          weeklyDateSet.has(assignment.dueDate) &&
+          assignment.status !== 'Done' &&
+          !assignment.submitted,
+      ),
+    [data.assignments, weeklyDateSet],
+  );
   const cloudStatusLabel = !supabaseConfigured
     ? 'setup'
     : user
@@ -1620,8 +1724,236 @@ export default function Home() {
             </section>
           </TabsContent>
 
+          <TabsContent value="weekly" className="grid gap-4">
+            <section className="pixel-panel overflow-x-auto p-4">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-black">Weekly</h2>
+                  <p className="text-sm text-blue-950/65">
+                    {formatWeekRange(weeklyWeekStart)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Previous week"
+                    onClick={() =>
+                      setWeeklyWeekStart(addIsoDays(weeklyWeekStart, -7))
+                    }
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      setWeeklyWeekStart(startOfWeekIso(todayIso()))
+                    }
+                  >
+                    This week
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Next week"
+                    onClick={() =>
+                      setWeeklyWeekStart(addIsoDays(weeklyWeekStart, 7))
+                    }
+                  >
+                    <ChevronRight />
+                  </Button>
+                </div>
+              </div>
+              <div className="mb-4 flex flex-wrap gap-4 text-sm font-semibold text-blue-950/70">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={weeklyShowClasses}
+                    onChange={(event) =>
+                      setWeeklyShowClasses(event.target.checked)
+                    }
+                  />
+                  Classes
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={weeklyShowAssignments}
+                    onChange={(event) =>
+                      setWeeklyShowAssignments(event.target.checked)
+                    }
+                  />
+                  Assignments
+                </label>
+              </div>
+              <div className="min-w-[900px]">
+                <div className="grid grid-cols-[64px_repeat(5,minmax(140px,1fr))] gap-0">
+                  <div />
+                  {days.map((day, index) => (
+                    <div
+                      key={day}
+                      className="mx-1 border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black"
+                    >
+                      <span>{day}</span>
+                      <span className="ml-2 text-xs font-bold text-blue-950/55">
+                        {formatMonthDay(weeklyDates[index])}
+                      </span>
+                    </div>
+                  ))}
+                  <div
+                    className="relative border-r border-blue-200"
+                    style={{ height: scheduleGridHeight }}
+                  >
+                    {scheduleHours.map((hour) => (
+                      <span
+                        key={hour}
+                        className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
+                        style={{
+                          top:
+                            ((hour - scheduleStartHour) /
+                              (scheduleEndHour - scheduleStartHour)) *
+                            scheduleGridHeight,
+                        }}
+                      >
+                        {formatScheduleHour(hour)}
+                      </span>
+                    ))}
+                  </div>
+                  {days.map((day, dayIndex) => {
+                    const date = weeklyDates[dayIndex];
+                    const unanchoredAssignments = weeklyAssignments.filter(
+                      (assignment) =>
+                        weeklyShowAssignments &&
+                        !assignment.dueTime &&
+                        assignment.dueDate === date &&
+                        (!weeklyShowClasses ||
+                          !data.schedule.some(
+                            (block) =>
+                              block.day === day &&
+                              block.courseId === assignment.courseId,
+                          )),
+                    );
+                    const timedAssignments = weeklyAssignments.filter(
+                      (assignment) =>
+                        weeklyShowAssignments &&
+                        Boolean(assignment.dueTime) &&
+                        dayFromIsoDate(assignment.dueDate) === day,
+                    );
+
+                    return (
+                      <div
+                        key={day}
+                        className="schedule-day-column relative border-r border-blue-200"
+                        style={{ height: scheduleGridHeight }}
+                      >
+                        {weeklyShowClasses
+                          ? data.schedule
+                              .filter((block) => block.day === day)
+                              .sort((a, b) => a.start.localeCompare(b.start))
+                              .map((block) => {
+                                const course = courseById.get(block.courseId);
+                                const layout = scheduleBlockLayout(block);
+                                const blockAssignments =
+                                  weeklyAssignments.filter(
+                                    (assignment) =>
+                                      weeklyShowAssignments &&
+                                      !assignment.dueTime &&
+                                      assignment.dueDate === date &&
+                                      assignment.courseId === block.courseId,
+                                  );
+                                return (
+                                  <div
+                                    key={block.id}
+                                    className="absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 py-1.5 text-center"
+                                    style={{
+                                      top: layout.top,
+                                      height: layout.height,
+                                      background: course?.color ?? '#dbeafe',
+                                    }}
+                                  >
+                                    <div className="flex h-full min-h-0 items-center justify-center">
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-black leading-tight">
+                                          {course?.name ?? 'Course'}
+                                        </p>
+                                        <p className="text-xs leading-tight text-blue-950/70">
+                                          {block.start} - {block.end}
+                                        </p>
+                                        <p className="truncate text-xs font-semibold leading-tight">
+                                          {block.location ||
+                                            course?.room ||
+                                            'Location'}
+                                        </p>
+                                        {blockAssignments
+                                          .slice(0, 2)
+                                          .map((assignment) => (
+                                            <p
+                                              key={assignment.id}
+                                              className="mt-1 truncate border border-blue-300 bg-white/70 px-1 text-xs font-black leading-tight text-blue-950"
+                                            >
+                                              {assignment.type}:{' '}
+                                              {assignment.title}
+                                            </p>
+                                          ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                          : null}
+                        {unanchoredAssignments.map((assignment, index) => {
+                          const course = courseById.get(assignment.courseId);
+                          return (
+                            <div
+                              key={assignment.id}
+                              className="absolute inset-x-1 border-2 border-blue-200 px-2 py-1 text-center text-xs font-black text-blue-950"
+                              style={{
+                                top: 6 + index * 30,
+                                background: course?.color ?? '#dbeafe',
+                              }}
+                            >
+                              <p className="truncate">
+                                {assignment.type}: {assignment.title}
+                              </p>
+                            </div>
+                          );
+                        })}
+                        {timedAssignments.map((assignment) => {
+                          const course = courseById.get(assignment.courseId);
+                          const layout = scheduleBlockLayout({
+                            start: assignment.dueTime ?? '09:00',
+                            end: addMinutesToTime(
+                              assignment.dueTime ?? '09:00',
+                              45,
+                            ),
+                          });
+                          return (
+                            <div
+                              key={assignment.id}
+                              className="absolute right-1 left-8 overflow-hidden border-2 border-blue-200 px-2 py-1 text-xs font-black text-blue-950"
+                              style={{
+                                top: layout.top,
+                                height: layout.height,
+                                background: course?.color ?? '#dbeafe',
+                              }}
+                            >
+                              <p className="truncate">{assignment.title}</p>
+                              <p className="truncate font-semibold text-blue-950/70">
+                                Due {assignment.dueTime}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          </TabsContent>
+
           <TabsContent value="assignments" className="grid gap-4">
-            <section className="pixel-panel grid gap-3 p-4 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.7fr_auto]">
+            <section className="pixel-panel grid gap-3 p-4 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.65fr_0.65fr_auto]">
               <Field label="Course">
                 <CourseSelect
                   courses={data.courses}
@@ -1668,6 +2000,18 @@ export default function Home() {
                     setAssignmentDraft({
                       ...assignmentDraft,
                       dueDate: event.target.value,
+                    })
+                  }
+                />
+              </Field>
+              <Field label="Due Time">
+                <TextInput
+                  type="time"
+                  value={assignmentDraft.dueTime ?? ''}
+                  onChange={(event) =>
+                    setAssignmentDraft({
+                      ...assignmentDraft,
+                      dueTime: event.target.value,
                     })
                   }
                 />
@@ -3059,6 +3403,7 @@ function AssignmentTable({
           <TableHead>Priority</TableHead>
           <TableHead>Week</TableHead>
           <TableHead>Due</TableHead>
+          <TableHead>Time</TableHead>
           <TableHead>Left</TableHead>
           <TableHead>Done</TableHead>
           <TableHead />
@@ -3173,6 +3518,20 @@ function AssignmentTable({
                     )
                   }
                   className="w-40"
+                />
+              </TableCell>
+              <TableCell>
+                <TextInput
+                  type="time"
+                  value={assignment.dueTime ?? ''}
+                  onChange={(event) =>
+                    updateAssignment(
+                      assignment.id,
+                      'dueTime',
+                      event.target.value,
+                    )
+                  }
+                  className="w-32"
                 />
               </TableCell>
               <TableCell
