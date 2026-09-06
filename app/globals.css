@@ -148,6 +148,17 @@ body {
     box-shadow: 3px 3px 0 oklch(0.84 0.065 68);
   }
 
+  .schedule-day-column {
+    background:
+      repeating-linear-gradient(
+        0deg,
+        transparent 0,
+        transparent 55px,
+        oklch(0.88 0.05 245 / 55%) 56px
+      ),
+      oklch(0.998 0.003 245);
+  }
+
   [data-slot='tabs-content'][hidden] {
     display: none !important;
   }

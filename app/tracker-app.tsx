@@ -406,7 +406,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       id: 'hour-1',
       event: 'Sample event',
       project: 'Project 1',
-      date: todayIso(),
+      date: baseDate,
       start: '10:00',
       end: '12:00',
       notes: '',
@@ -550,6 +550,46 @@ const hoursBetween = (start: string, end: string) => {
   let minutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
   if (minutes < 0) minutes += 24 * 60;
   return minutes / 60;
+};
+
+const scheduleStartHour = 8;
+const scheduleEndHour = 18;
+const scheduleHourHeight = 56;
+const scheduleStartMinutes = scheduleStartHour * 60;
+const scheduleEndMinutes = scheduleEndHour * 60;
+const scheduleGridHeight =
+  (scheduleEndHour - scheduleStartHour) * scheduleHourHeight;
+const scheduleHours = Array.from(
+  { length: scheduleEndHour - scheduleStartHour + 1 },
+  (_, index) => scheduleStartHour + index,
+);
+
+const timeToMinutes = (time: string) => {
+  const [hours = 0, minutes = 0] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+};
+
+const scheduleBlockLayout = (block: ScheduleBlock) => {
+  const start = Math.min(
+    scheduleEndMinutes,
+    Math.max(scheduleStartMinutes, timeToMinutes(block.start)),
+  );
+  const rawEnd = timeToMinutes(block.end);
+  const end = Math.min(
+    scheduleEndMinutes,
+    Math.max(start + 15, rawEnd <= start ? start + 60 : rawEnd),
+  );
+
+  return {
+    top: ((start - scheduleStartMinutes) / 60) * scheduleHourHeight,
+    height: Math.max(((end - start) / 60) * scheduleHourHeight, 34),
+  };
+};
+
+const formatScheduleHour = (hour: number) => {
+  if (hour === 12) return '12 pm';
+  if (hour > 12) return `${hour - 12} pm`;
+  return `${hour} am`;
 };
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
@@ -2109,40 +2149,75 @@ export default function Home() {
 
             <section className="pixel-panel overflow-x-auto p-4">
               <h2 className="mb-4 text-xl font-black">Weekly Schedule</h2>
-              <div className="grid min-w-[760px] grid-cols-5 gap-3">
+              <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
+                <div />
                 {days.map((day) => (
-                  <div key={day} className="grid content-start gap-2">
-                    <div className="border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black">
-                      {day}
-                    </div>
+                  <div
+                    key={day}
+                    className="mx-1 border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black"
+                  >
+                    {day}
+                  </div>
+                ))}
+                <div
+                  className="relative border-r border-blue-200"
+                  style={{ height: scheduleGridHeight }}
+                >
+                  {scheduleHours.map((hour) => (
+                    <span
+                      key={hour}
+                      className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
+                      style={{
+                        top:
+                          ((hour - scheduleStartHour) /
+                            (scheduleEndHour - scheduleStartHour)) *
+                          scheduleGridHeight,
+                      }}
+                    >
+                      {formatScheduleHour(hour)}
+                    </span>
+                  ))}
+                </div>
+                {days.map((day) => (
+                  <div
+                    key={day}
+                    className="schedule-day-column relative border-r border-blue-200"
+                    style={{ height: scheduleGridHeight }}
+                  >
                     {data.schedule
                       .filter((block) => block.day === day)
                       .sort((a, b) => a.start.localeCompare(b.start))
                       .map((block) => {
                         const course = courseById.get(block.courseId);
+                        const layout = scheduleBlockLayout(block);
                         return (
                           <div
                             key={block.id}
-                            className="group border-2 border-blue-200 bg-white p-2"
+                            className="group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 py-1.5 text-center"
+                            style={{
+                              top: layout.top,
+                              height: layout.height,
+                              background: course?.color ?? '#dbeafe',
+                            }}
                           >
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <p className="font-black">
+                            <div className="flex h-full min-h-0 items-center justify-center">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-black leading-tight">
                                   {course?.name ?? 'Course'}
                                 </p>
-                                <p className="text-xs text-blue-950/65">
+                                <p className="text-xs leading-tight text-blue-950/70">
                                   {block.start} - {block.end}
                                 </p>
-                                <p className="text-xs font-semibold">
+                                <p className="truncate text-xs font-semibold leading-tight">
                                   {block.location || course?.room || 'Location'}
                                 </p>
                               </div>
                               <button
                                 aria-label="Delete schedule block"
-                                className="opacity-0 transition group-hover:opacity-100"
+                                className="absolute top-1 right-1 opacity-0 transition group-hover:opacity-100"
                                 onClick={() => removeItem('schedule', block.id)}
                               >
-                                <Trash2 className="size-4" />
+                                <Trash2 className="size-3.5" />
                               </button>
                             </div>
                           </div>
