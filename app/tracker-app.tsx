@@ -2468,15 +2468,13 @@ export default function Home() {
                                   {course?.name ?? 'Course'}
                                 </p>
                                 <p className="text-xs leading-tight text-blue-950/70">
-                                  {block.start} - {block.end}
-                                </p>
-                                <p className="truncate text-xs font-semibold leading-tight">
-                                  {block.teacher ||
-                                    course?.instructor ||
-                                    'Teacher'}
+                                  {block.start} - {block.end} ·{'  '}
+                                  {block.office || 'Office'}
                                 </p>
                                 <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
-                                  {block.office || 'Office'}
+                                  {block.teacher ||
+                                    course?.instructor ||
+                                    'Professor'}
                                 </p>
                                 {block.notes ? (
                                   <p className="truncate text-xs leading-tight text-blue-950/65">
