@@ -95,6 +95,7 @@ type ScheduleBlock = {
   start: string;
   end: string;
   location: string;
+  type?: string;
 };
 
 type OfficeHourBlock = {
@@ -202,6 +203,46 @@ type CloudStatus =
   | 'setup'
   | 'offline';
 
+type ImportedCourse = {
+  code: string;
+  name: string;
+  sections: string[];
+  instructor: string;
+  credits: number;
+  room: string;
+};
+
+type ImportedScheduleBlock = {
+  courseCode: string;
+  section: string;
+  day: string;
+  start: string;
+  end: string;
+  location: string;
+  type: string;
+  instructor: string;
+};
+
+type ParsedStudentSchedule = {
+  courses: ImportedCourse[];
+  schedule: ImportedScheduleBlock[];
+};
+
+type ImportDiff = {
+  label: string;
+  current: string;
+  incoming: string;
+};
+
+type ScheduleImportResult = {
+  data: TrackerData;
+  addedCourses: number;
+  updatedCourses: number;
+  addedBlocks: number;
+  replacedBlocks: number;
+  skippedBlocks: number;
+};
+
 const statuses: Status[] = ['Not Started', 'In Progress', 'Done'];
 const priorities: Priority[] = ['Low', 'Medium', 'High', 'Super High'];
 const assignmentTypes: AssignmentType[] = [
@@ -233,6 +274,13 @@ const weeks = [
   'Finals Week',
 ];
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const dayCodeMap: Record<string, string> = {
+  M: 'Monday',
+  T: 'Tuesday',
+  W: 'Wednesday',
+  R: 'Thursday',
+  F: 'Friday',
+};
 const weekdayLabels: Record<string, string> = {
   Monday: 'M',
   Tuesday: 'T',
@@ -257,6 +305,15 @@ const shortMonths = [
 const courseColors = ['#dbeafe', '#bfdbfe', '#eff6ff', '#fef3c7', '#e0f2fe'];
 const storageKey = 'mcgilltrack-template-v1';
 const cloudSaveDelay = 1200;
+const scheduleTypes = [
+  'Lab-Tutorial',
+  'Laboratory',
+  'Tutorial',
+  'Lecture',
+  'Seminar',
+  'Conference',
+  'Lab',
+];
 
 const cloudErrorMessage = (message: string) =>
   message.includes('tracker_profiles') || message.includes('schema cache')
@@ -548,6 +605,7 @@ const blankSchedule = (courseId: string): ScheduleBlock => ({
   start: '09:00',
   end: '10:00',
   location: '',
+  type: '',
 });
 
 const blankOfficeHour = (courseId: string): OfficeHourBlock => ({
@@ -682,6 +740,432 @@ const formatDueTime = (time?: string) => {
   return `${displayHour}:${String(minutes).padStart(2, '0')} ${suffix}`;
 };
 
+const cleanPdfLine = (line: string) =>
+  line
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isPdfNoiseLine = (line: string) =>
+  !line ||
+  line.startsWith('https://') ||
+  line.startsWith('RELEASE:') ||
+  line.startsWith('NOTICE:') ||
+  line.startsWith('Return to Previous') ||
+  line.includes('Student Schedule by Course Section') ||
+  /^\d+\/\d+\/\d+/.test(line) ||
+  line.includes('Ellucian Company') ||
+  line.startsWith('If you are using ') ||
+  line.startsWith('please report ') ||
+  line.startsWith('help us.');
+
+const parseCourseHeader = (line: string) => {
+  const match = cleanPdfLine(line).match(
+    /^(.+?)\.?\s*-\s*([A-Z]{3,4})\s+(\d{3})\s*-\s*([A-Z0-9]{3})$/,
+  );
+  if (!match) return null;
+
+  return {
+    name: cleanPdfLine(match[1]).replace(/\.$/, ''),
+    code: `${match[2]} ${match[3]}`,
+    section: match[4],
+  };
+};
+
+const parsePdfTime = (hour: string, meridiem: string) => {
+  const [rawHours, rawMinutes] = hour.split(':').map(Number);
+  const lowerMeridiem = meridiem.toLowerCase();
+  const normalizedHours =
+    lowerMeridiem === 'pm' && rawHours !== 12
+      ? rawHours + 12
+      : lowerMeridiem === 'am' && rawHours === 12
+        ? 0
+        : rawHours;
+  return `${String(normalizedHours).padStart(2, '0')}:${String(rawMinutes).padStart(2, '0')}`;
+};
+
+const parseMeetingLine = (
+  line: string,
+  courseCode: string,
+  section: string,
+) => {
+  const typePattern = scheduleTypes.join('|');
+  const match = cleanPdfLine(line).match(
+    new RegExp(
+      `^(\\d{1,2}:\\d{2})\\s*(am|pm)\\s*-\\s*(\\d{1,2}:\\d{2})\\s*(am|pm)?\\s+([MTWRFSU]+)\\s+(.+?)\\s+([A-Z][a-z]{2}\\s+\\d{1,2},\\s+\\d{4}\\s+-\\s+[A-Z][a-z]{2}\\s+\\d{1,2},\\s+\\d{4})\\s+(${typePattern})\\s*(.*)$`,
+      'i',
+    ),
+  );
+  if (!match) return [];
+
+  const startMeridiem = match[2];
+  const endMeridiem = match[4] || startMeridiem;
+  const location = cleanPdfLine(match[6]);
+  const type = cleanPdfLine(match[8]);
+  const instructor = cleanPdfLine(match[9]).replace(/^TBA$/i, '');
+
+  return match[5]
+    .split('')
+    .map((dayCode) => dayCodeMap[dayCode])
+    .filter(Boolean)
+    .map((day) => ({
+      courseCode,
+      section,
+      day,
+      start: parsePdfTime(match[1], startMeridiem),
+      end: parsePdfTime(match[3], endMeridiem),
+      location,
+      type,
+      instructor,
+    }));
+};
+
+const parseStudentSchedulePdfText = (text: string): ParsedStudentSchedule => {
+  const lines = text
+    .split(/\r?\n/)
+    .map(cleanPdfLine)
+    .filter((line) => !isPdfNoiseLine(line));
+  const sectionStarts = lines
+    .map((line, index) =>
+      line.startsWith('Associated Term:') ? index : undefined,
+    )
+    .filter((index): index is number => index !== undefined);
+  const courses = new Map<string, ImportedCourse>();
+  const schedule: ImportedScheduleBlock[] = [];
+
+  sectionStarts.forEach((startIndex, sectionIndex) => {
+    let header = null as ReturnType<typeof parseCourseHeader>;
+    for (let lookback = 1; lookback <= 4; lookback += 1) {
+      const candidate = lines
+        .slice(Math.max(0, startIndex - lookback), startIndex)
+        .join(' ');
+      header = parseCourseHeader(candidate);
+      if (header) break;
+    }
+    if (!header) return;
+
+    const nextStart = sectionStarts[sectionIndex + 1] ?? lines.length;
+    const sectionLines = lines.slice(startIndex, nextStart);
+    const assignedInstructor =
+      sectionLines
+        .find((line) => line.startsWith('Assigned Instructor:'))
+        ?.replace('Assigned Instructor:', '')
+        .trim() ?? '';
+    const credits = Number(
+      sectionLines
+        .find((line) => line.startsWith('Credits:'))
+        ?.replace('Credits:', '')
+        .trim() ?? 0,
+    );
+
+    const meetingBlocks: ImportedScheduleBlock[] = [];
+    for (let index = 0; index < sectionLines.length; index += 1) {
+      const line = sectionLines[index];
+      if (!/^\d{1,2}:\d{2}\s*(am|pm)\s*-/i.test(line)) continue;
+
+      let combined = line;
+      let parsed = parseMeetingLine(combined, header.code, header.section);
+      let nextIndex = index + 1;
+      while (parsed.length === 0 && nextIndex < sectionLines.length) {
+        const nextLine = sectionLines[nextIndex];
+        if (
+          nextLine.startsWith('Associated Term:') ||
+          parseCourseHeader(nextLine) ||
+          (nextIndex > index + 1 &&
+            /^\d{1,2}:\d{2}\s*(am|pm)\s*-/i.test(nextLine))
+        ) {
+          break;
+        }
+        combined = `${combined} ${nextLine}`;
+        parsed = parseMeetingLine(combined, header.code, header.section);
+        nextIndex += 1;
+      }
+
+      if (parsed.length > 0) {
+        meetingBlocks.push(...parsed);
+        index = nextIndex - 1;
+      }
+    }
+
+    meetingBlocks.forEach((block) => schedule.push(block));
+
+    const existing = courses.get(header.code);
+    const room = meetingBlocks.find((block) => block.location)?.location ?? '';
+    const instructor =
+      cleanPdfLine(assignedInstructor) ||
+      meetingBlocks.find((block) => block.instructor)?.instructor ||
+      '';
+
+    if (existing) {
+      courses.set(header.code, {
+        ...existing,
+        sections: Array.from(new Set([...existing.sections, header.section])),
+        instructor: existing.instructor || instructor,
+        credits: Math.max(
+          existing.credits,
+          Number.isFinite(credits) ? credits : 0,
+        ),
+        room: existing.room || room,
+      });
+    } else {
+      courses.set(header.code, {
+        code: header.code,
+        name: header.name,
+        sections: [header.section],
+        instructor,
+        credits: Number.isFinite(credits) ? credits : 0,
+        room,
+      });
+    }
+  });
+
+  return {
+    courses: Array.from(courses.values()),
+    schedule,
+  };
+};
+
+const extractPdfText = async (file: File) => {
+  const pdfjs = await import('pdfjs-dist');
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.mjs',
+    import.meta.url,
+  ).toString();
+
+  const pdf = await pdfjs.getDocument({
+    data: new Uint8Array(await file.arrayBuffer()),
+  }).promise;
+  let text = '';
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    let line = '';
+
+    content.items.forEach((item) => {
+      if (!('str' in item)) return;
+      const value = item.str.trim();
+      if (value) line = `${line}${line ? ' ' : ''}${value}`;
+      if ('hasEOL' in item && item.hasEOL) {
+        if (line) text = `${text}${line}\n`;
+        line = '';
+      }
+    });
+
+    if (line) text = `${text}${line}\n`;
+  }
+
+  return text;
+};
+
+const formatDiffs = (diffs: ImportDiff[]) =>
+  diffs
+    .map(
+      (diff) =>
+        `- ${diff.label}: ${diff.current || 'blank'} -> ${diff.incoming || 'blank'}`,
+    )
+    .join('\n');
+
+const meaningfulCourseDiffs = (
+  existing: Course,
+  incoming: ImportedCourse,
+  section: string,
+) => {
+  const candidates: ImportDiff[] = [
+    { label: 'Name', current: existing.name, incoming: incoming.name },
+    { label: 'Room', current: existing.room, incoming: incoming.room },
+    {
+      label: 'Instructor',
+      current: existing.instructor,
+      incoming: incoming.instructor,
+    },
+    { label: 'Section', current: existing.section ?? '', incoming: section },
+    {
+      label: 'Credits',
+      current: String(existing.credits || ''),
+      incoming: String(incoming.credits || ''),
+    },
+  ];
+
+  return candidates.filter(
+    (diff) =>
+      diff.current.trim() &&
+      diff.incoming.trim() &&
+      diff.current.trim() !== diff.incoming.trim(),
+  );
+};
+
+const scheduleDiffs = (existing: ScheduleBlock, incoming: ScheduleBlock) => {
+  const candidates: ImportDiff[] = [
+    {
+      label: 'Time',
+      current: `${existing.start} - ${existing.end}`,
+      incoming: `${incoming.start} - ${incoming.end}`,
+    },
+    {
+      label: 'Room',
+      current: existing.location,
+      incoming: incoming.location,
+    },
+    {
+      label: 'Type',
+      current: existing.type ?? '',
+      incoming: incoming.type ?? '',
+    },
+  ];
+
+  return candidates.filter(
+    (diff) =>
+      diff.current.trim() !== diff.incoming.trim() &&
+      (diff.current.trim() || diff.incoming.trim()),
+  );
+};
+
+const findScheduleConflictIndex = (
+  schedule: ScheduleBlock[],
+  incoming: ScheduleBlock,
+) =>
+  schedule.findIndex((existing) => {
+    if (
+      existing.courseId !== incoming.courseId ||
+      existing.day !== incoming.day
+    ) {
+      return false;
+    }
+
+    const sameType = (existing.type ?? '') === (incoming.type ?? '');
+    const sameTime =
+      existing.start === incoming.start && existing.end === incoming.end;
+    const samePlace = existing.location === incoming.location;
+
+    return sameType || sameTime || (samePlace && Boolean(incoming.type));
+  });
+
+const mergeStudentScheduleImport = (
+  current: TrackerData,
+  parsed: ParsedStudentSchedule,
+): ScheduleImportResult => {
+  const nextCourses = [...current.courses];
+  const nextSchedule = [...current.schedule];
+  const courseIdByCode = new Map(
+    nextCourses.map((course) => [course.code, course.id]),
+  );
+  let addedCourses = 0;
+  let updatedCourses = 0;
+  let addedBlocks = 0;
+  let replacedBlocks = 0;
+  let skippedBlocks = 0;
+
+  parsed.courses.forEach((importedCourse) => {
+    const existingId = courseIdByCode.get(importedCourse.code);
+    const section = importedCourse.sections.join(', ');
+
+    if (existingId) {
+      const index = nextCourses.findIndex((course) => course.id === existingId);
+      const existing = nextCourses[index];
+      const diffs = meaningfulCourseDiffs(existing, importedCourse, section);
+      const replace =
+        diffs.length === 0 ||
+        window.confirm(
+          `Replace course details for ${existing.code || existing.name}?\n\n${formatDiffs(diffs)}`,
+        );
+
+      if (!replace) return;
+
+      nextCourses[index] = {
+        ...existing,
+        name: importedCourse.name || existing.name,
+        code: importedCourse.code,
+        room: importedCourse.room || existing.room,
+        instructor: importedCourse.instructor || existing.instructor,
+        section: section || existing.section,
+        credits: importedCourse.credits || existing.credits,
+      };
+      updatedCourses += 1;
+      return;
+    }
+
+    const id = makeId();
+    courseIdByCode.set(importedCourse.code, id);
+    nextCourses.push({
+      id,
+      name: importedCourse.name,
+      code: importedCourse.code,
+      room: importedCourse.room,
+      instructor: importedCourse.instructor,
+      email: '',
+      section,
+      teams: '',
+      extension: '',
+      weeklyPonderation: '',
+      credits: importedCourse.credits,
+      color: courseColors[nextCourses.length % courseColors.length],
+    });
+    addedCourses += 1;
+  });
+
+  parsed.schedule.forEach((block) => {
+    const courseId = courseIdByCode.get(block.courseCode);
+    if (!courseId) return;
+
+    const incoming: ScheduleBlock = {
+      id: makeId(),
+      courseId,
+      day: block.day,
+      start: block.start,
+      end: block.end,
+      location: block.location,
+      type: block.section ? `${block.type} ${block.section}` : block.type,
+    };
+    const conflictIndex = findScheduleConflictIndex(nextSchedule, incoming);
+
+    if (conflictIndex === -1) {
+      nextSchedule.push(incoming);
+      addedBlocks += 1;
+      return;
+    }
+
+    const existing = nextSchedule[conflictIndex];
+    const diffs = scheduleDiffs(existing, incoming);
+    if (diffs.length === 0) {
+      skippedBlocks += 1;
+      return;
+    }
+
+    const course = nextCourses.find((item) => item.id === courseId);
+    const replace = window.confirm(
+      `Replace ${course?.code || 'this class'} ${incoming.type || 'meeting'} on ${incoming.day}?\n\n${formatDiffs(diffs)}`,
+    );
+
+    if (!replace) {
+      skippedBlocks += 1;
+      return;
+    }
+
+    nextSchedule[conflictIndex] = {
+      ...existing,
+      start: incoming.start,
+      end: incoming.end,
+      location: incoming.location,
+      type: incoming.type,
+    };
+    replacedBlocks += 1;
+  });
+
+  return {
+    data: {
+      ...current,
+      courses: nextCourses,
+      schedule: nextSchedule,
+    },
+    addedCourses,
+    updatedCourses,
+    addedBlocks,
+    replacedBlocks,
+    skippedBlocks,
+  };
+};
+
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value: number) => (Math.round(value * 10) / 10).toFixed(1);
 
@@ -693,10 +1177,16 @@ const normalizeAssignments = (
     dueTime: assignment.dueTime ?? '',
   }));
 
+const normalizeSchedule = (schedule = defaultData.schedule): ScheduleBlock[] =>
+  schedule.map((block) => ({
+    ...block,
+    type: block.type ?? '',
+  }));
+
 const normalizeData = (incoming: Partial<TrackerData>): TrackerData => ({
   courses: incoming.courses ?? defaultData.courses,
   assignments: normalizeAssignments(incoming.assignments),
-  schedule: incoming.schedule ?? defaultData.schedule,
+  schedule: normalizeSchedule(incoming.schedule),
   officeHours: incoming.officeHours ?? defaultData.officeHours,
   notes: incoming.notes ?? defaultData.notes,
   hours: incoming.hours ?? defaultData.hours,
@@ -810,6 +1300,7 @@ function MiniStat({
 export default function Home() {
   const pathname = usePathname();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const schedulePdfInputRef = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
   const dataRef = useRef(defaultData);
   const cloudSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1392,6 +1883,37 @@ export default function Home() {
     event.target.value = '';
   };
 
+  const importSchedulePdf = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setAuthMessage('Reading schedule PDF...');
+      const parsed = parseStudentSchedulePdfText(await extractPdfText(file));
+      if (parsed.courses.length === 0 || parsed.schedule.length === 0) {
+        throw new Error('No schedule rows were found.');
+      }
+
+      const result = mergeStudentScheduleImport(data, parsed);
+      setData(result.data);
+
+      setAuthMessage(
+        `Imported ${result.addedCourses} new courses, updated ${result.updatedCourses}, added ${result.addedBlocks} class blocks, replaced ${result.replacedBlocks}, skipped ${result.skippedBlocks}.`,
+      );
+    } catch (error) {
+      setAuthMessage('Schedule PDF import failed.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'That schedule PDF could not be imported.',
+      );
+    } finally {
+      event.target.value = '';
+    }
+  };
+
   const handleAuth = async (mode: 'sign-in' | 'sign-up') => {
     if (!supabase) {
       setAuthMessage('Supabase is not configured.');
@@ -1489,15 +2011,29 @@ export default function Home() {
             </Button>
             <Button
               variant="outline"
+              onClick={() => schedulePdfInputRef.current?.click()}
+            >
+              <Upload data-icon="inline-start" />
+              Import Schedule PDF
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload data-icon="inline-start" />
-              Import
+              Import Data
             </Button>
             <Button variant="secondary" onClick={resetTemplate}>
               <RotateCcw data-icon="inline-start" />
               Reset
             </Button>
+            <input
+              ref={schedulePdfInputRef}
+              className="hidden"
+              type="file"
+              accept="application/pdf"
+              onChange={(event) => void importSchedulePdf(event)}
+            />
             <input
               ref={fileInputRef}
               className="hidden"
@@ -1872,6 +2408,11 @@ export default function Home() {
                                             course?.room ||
                                             'Location'}
                                         </p>
+                                        {block.type ? (
+                                          <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                            {block.type}
+                                          </p>
+                                        ) : null}
                                         {blockAssignments
                                           .slice(0, 2)
                                           .map((assignment) => (
@@ -2621,6 +3162,11 @@ export default function Home() {
                                 <p className="truncate text-xs font-semibold leading-tight">
                                   {block.location || course?.room || 'Location'}
                                 </p>
+                                {block.type ? (
+                                  <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                    {block.type}
+                                  </p>
+                                ) : null}
                               </div>
                               <button
                                 aria-label="Delete schedule block"
@@ -3478,6 +4024,11 @@ function TodayClassList({
             <p className="truncate text-xs font-semibold text-blue-950/75">
               {block.location || course?.room || 'Location'}
             </p>
+            {block.type ? (
+              <p className="truncate text-xs font-semibold text-blue-950/70">
+                {block.type}
+              </p>
+            ) : null}
           </article>
         );
       })}
