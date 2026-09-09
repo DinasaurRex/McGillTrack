@@ -702,6 +702,20 @@ const timeToMinutes = (time: string) => {
   return hours * 60 + minutes;
 };
 
+const minutesToTime = (totalMinutes: number) => {
+  const minutesInDay = 24 * 60;
+  const normalized =
+    ((Math.round(totalMinutes) % minutesInDay) + minutesInDay) % minutesInDay;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
+const snapToFiveMinutes = (minutes: number) => Math.round(minutes / 5) * 5;
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
 const addMinutesToTime = (time: string, minutesToAdd: number) => {
   const total = timeToMinutes(time) + minutesToAdd;
   const hours = Math.floor(total / 60) % 24;
@@ -1337,6 +1351,13 @@ export default function Home() {
   const schedulePdfInputRef = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
   const dataRef = useRef(defaultData);
+  const scheduleResizeRef = useRef<{
+    edge: 'start' | 'end';
+    id: string;
+    startY: number;
+    startMinutes: number;
+    startEndMinutes: number;
+  } | null>(null);
   const cloudSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cloudLoaded = useRef(false);
   const syncingUserId = useRef<string | null>(null);
@@ -1346,6 +1367,7 @@ export default function Home() {
   );
   const [weeklyShowClasses, setWeeklyShowClasses] = useState(true);
   const [weeklyShowAssignments, setWeeklyShowAssignments] = useState(true);
+  const [resizingScheduleBlockId, setResizingScheduleBlockId] = useState('');
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
   const [todayDay, setTodayDay] = useState('Monday');
@@ -1456,6 +1478,17 @@ export default function Home() {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+
+  useEffect(() => {
+    if (!resizingScheduleBlockId) return;
+
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [resizingScheduleBlockId]);
 
   const saveCloudData = useCallback(
     async (currentUser = user, trackerData = dataRef.current) => {
@@ -1741,6 +1774,96 @@ export default function Home() {
         item.id === id ? { ...item, [key]: value } : item,
       ),
     }));
+  };
+
+  const updateScheduleBlockTime = (
+    id: string,
+    updates: Pick<ScheduleBlock, 'start' | 'end'>,
+  ) => {
+    setData((current) => ({
+      ...current,
+      schedule: current.schedule.map((block) =>
+        block.id === id ? { ...block, ...updates } : block,
+      ),
+    }));
+  };
+
+  const startScheduleBlockResize = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    edge: 'start' | 'end',
+    block: Pick<ScheduleBlock, 'id' | 'start' | 'end'>,
+  ) => {
+    if (event.button !== 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const startMinutes = clampNumber(
+      timeToMinutes(block.start),
+      scheduleStartMinutes,
+      scheduleEndMinutes - 5,
+    );
+    const startEndMinutes = clampNumber(
+      timeToMinutes(block.end),
+      startMinutes + 5,
+      scheduleEndMinutes,
+    );
+
+    scheduleResizeRef.current = {
+      edge,
+      id: block.id,
+      startY: event.clientY,
+      startMinutes,
+      startEndMinutes,
+    };
+    setResizingScheduleBlockId(block.id);
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const resize = scheduleResizeRef.current;
+      if (!resize) return;
+
+      const minuteDelta = snapToFiveMinutes(
+        ((moveEvent.clientY - resize.startY) / scheduleHourHeight) * 60,
+      );
+
+      if (resize.edge === 'start') {
+        const nextStart = clampNumber(
+          snapToFiveMinutes(resize.startMinutes + minuteDelta),
+          scheduleStartMinutes,
+          resize.startEndMinutes - 5,
+        );
+
+        updateScheduleBlockTime(resize.id, {
+          start: minutesToTime(nextStart),
+          end: minutesToTime(resize.startEndMinutes),
+        });
+        return;
+      }
+
+      const nextEnd = clampNumber(
+        snapToFiveMinutes(resize.startEndMinutes + minuteDelta),
+        resize.startMinutes + 5,
+        scheduleEndMinutes,
+      );
+
+      updateScheduleBlockTime(resize.id, {
+        start: minutesToTime(resize.startMinutes),
+        end: minutesToTime(nextEnd),
+      });
+    };
+
+    const handlePointerUp = () => {
+      scheduleResizeRef.current = null;
+      setResizingScheduleBlockId('');
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
   };
 
   const addAssignment = () => {
@@ -3207,6 +3330,32 @@ export default function Home() {
                             }}
                             title={`${course?.name ?? 'Course'} · ${block.start} - ${block.end} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
                           >
+                            <button
+                              type="button"
+                              aria-label={`Adjust ${course?.name ?? 'class'} start time`}
+                              className={`absolute top-0 right-7 left-0 z-10 h-2 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 ${
+                                resizingScheduleBlockId === block.id
+                                  ? 'bg-blue-300/40'
+                                  : ''
+                              }`}
+                              title="Drag to adjust start time"
+                              onPointerDown={(event) =>
+                                startScheduleBlockResize(event, 'start', block)
+                              }
+                            />
+                            <button
+                              type="button"
+                              aria-label={`Adjust ${course?.name ?? 'class'} end time`}
+                              className={`absolute right-0 bottom-0 left-0 z-10 h-2 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 ${
+                                resizingScheduleBlockId === block.id
+                                  ? 'bg-blue-300/40'
+                                  : ''
+                              }`}
+                              title="Drag to adjust end time"
+                              onPointerDown={(event) =>
+                                startScheduleBlockResize(event, 'end', block)
+                              }
+                            />
                             <div className="flex h-full min-h-0 items-center justify-center">
                               <div className="min-w-0 max-w-full">
                                 <p
