@@ -325,7 +325,7 @@ const shortMonths = [
   'Nov',
   'Dec',
 ];
-const courseColors = ['#dbeafe', '#bfdbfe', '#eff6ff', '#fef3c7', '#e0f2fe'];
+const courseColors = ['#dbeafe', '#fef3c7', '#bfdbfe', '#eff6ff', '#e0f2fe'];
 const storageKey = 'mcgilltrack-template-v1';
 const cloudSaveDelay = 400;
 const scheduleTypes = [
@@ -1876,14 +1876,18 @@ function ColorPickerCube({
   value,
   onChange,
   label,
+  selected = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
+  selected?: boolean;
 }) {
   return (
     <label
-      className="relative grid size-8 cursor-pointer place-items-center overflow-hidden border-2 border-blue-300 shadow-[2px_2px_0_#fef3c7]"
+      className={`relative grid size-8 cursor-pointer place-items-center overflow-hidden border-2 shadow-[2px_2px_0_#fef3c7] ${
+        selected ? 'border-blue-500' : 'border-blue-300'
+      }`}
       style={{ background: value || '#dbeafe' }}
       title={label}
       aria-label={label}
@@ -1905,24 +1909,28 @@ function CourseColorControls({
   onChange,
   label,
   size = 'md',
+  presetLimit = courseColors.length,
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
   size?: 'sm' | 'md';
+  presetLimit?: number;
 }) {
   const swatchSize = size === 'sm' ? 'size-7' : 'size-8';
   const pickerClass = size === 'sm' ? '[&>label]:size-7' : '';
+  const visibleColors = courseColors.slice(0, presetLimit);
+  const customSelected = !visibleColors.includes(value);
 
   return (
     <div className={`flex flex-wrap gap-2 ${pickerClass}`}>
-      {courseColors.map((color) => (
+      {visibleColors.map((color) => (
         <button
           key={color}
           type="button"
           aria-label={`${label} ${color}`}
           className={`${swatchSize} border-2 ${
-            value === color ? 'border-blue-700' : 'border-blue-200'
+            value === color ? 'border-blue-500' : 'border-blue-200'
           }`}
           style={{ background: color }}
           onClick={() => onChange(color)}
@@ -1931,6 +1939,7 @@ function CourseColorControls({
       <ColorPickerCube
         value={value || '#dbeafe'}
         label={`${label} custom color`}
+        selected={customSelected}
         onChange={onChange}
       />
     </div>
@@ -3686,10 +3695,11 @@ export default function Home() {
                         />
                       </TableCell>
                       <TableCell>
-                        <div className="w-48">
+                        <div className="w-[136px]">
                           <CourseColorControls
                             value={course.color}
                             size="sm"
+                            presetLimit={3}
                             label={`Set ${course.name || 'course'} color`}
                             onChange={(color) =>
                               updateCourse(course.id, 'color', color)
