@@ -748,6 +748,7 @@ const cleanPdfLine = (line: string) =>
 
 const isPdfNoiseLine = (line: string) =>
   !line ||
+  /^\d+\/\d+$/.test(line) ||
   line.startsWith('https://') ||
   line.startsWith('RELEASE:') ||
   line.startsWith('NOTICE:') ||
@@ -770,6 +771,46 @@ const parseCourseHeader = (line: string) => {
     code: `${match[2]} ${match[3]}`,
     section: match[4],
   };
+};
+
+const pdfFieldLabels = [
+  'Associated Term:',
+  'CRN',
+  ':',
+  'Status:',
+  'Assigned Instructor:',
+  'Grade Mode:',
+  'Credits:',
+  'Level:',
+  'Campus:',
+  'Scheduled Meeting Times',
+  'Time',
+  'Days',
+  'Where',
+  'Date Range',
+  'Schedule Type',
+  'Instructors',
+];
+
+const isPdfFieldLabel = (line: string) =>
+  pdfFieldLabels.some((label) => line === label || line.startsWith(label));
+
+const valueAfterPdfLabel = (lines: string[], label: string) => {
+  const index = lines.findIndex((line) => line === label);
+  if (index === -1) {
+    return (
+      lines
+        .find((line) => line.startsWith(label))
+        ?.replace(label, '')
+        .trim() ?? ''
+    );
+  }
+
+  const value = lines[index + 1]?.startsWith(':')
+    ? (lines[index + 2] ?? '').trim()
+    : (lines[index + 1] ?? '').trim();
+
+  return isPdfFieldLabel(value) ? '' : value;
 };
 
 const parsePdfTime = (hour: string, meridiem: string) => {
@@ -846,17 +887,11 @@ const parseStudentSchedulePdfText = (text: string): ParsedStudentSchedule => {
 
     const nextStart = sectionStarts[sectionIndex + 1] ?? lines.length;
     const sectionLines = lines.slice(startIndex, nextStart);
-    const assignedInstructor =
-      sectionLines
-        .find((line) => line.startsWith('Assigned Instructor:'))
-        ?.replace('Assigned Instructor:', '')
-        .trim() ?? '';
-    const credits = Number(
-      sectionLines
-        .find((line) => line.startsWith('Credits:'))
-        ?.replace('Credits:', '')
-        .trim() ?? 0,
+    const assignedInstructor = valueAfterPdfLabel(
+      sectionLines,
+      'Assigned Instructor:',
     );
+    const credits = Number(valueAfterPdfLabel(sectionLines, 'Credits:') || 0);
 
     const meetingBlocks: ImportedScheduleBlock[] = [];
     for (let index = 0; index < sectionLines.length; index += 1) {
@@ -1033,12 +1068,11 @@ const findScheduleConflictIndex = (
       return false;
     }
 
-    const sameType = (existing.type ?? '') === (incoming.type ?? '');
     const sameTime =
       existing.start === incoming.start && existing.end === incoming.end;
-    const samePlace = existing.location === incoming.location;
+    const sameStart = existing.start === incoming.start;
 
-    return sameType || sameTime || (samePlace && Boolean(incoming.type));
+    return sameTime || sameStart;
   });
 
 const mergeStudentScheduleImport = (
@@ -2377,6 +2411,7 @@ export default function Home() {
                               .map((block) => {
                                 const course = courseById.get(block.courseId);
                                 const layout = scheduleBlockLayout(block);
+                                const compactBlock = layout.height < 58;
                                 const blockAssignments =
                                   weeklyAssignments.filter(
                                     (assignment) =>
@@ -2388,42 +2423,59 @@ export default function Home() {
                                 return (
                                   <div
                                     key={block.id}
-                                    className="absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 py-1.5 text-center"
+                                    className={`absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
+                                      compactBlock ? 'py-1' : 'py-1.5'
+                                    }`}
                                     style={{
                                       top: layout.top,
                                       height: layout.height,
                                       background: course?.color ?? '#dbeafe',
                                     }}
+                                    title={`${course?.name ?? 'Course'} · ${block.start} - ${block.end} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
                                   >
                                     <div className="flex h-full min-h-0 items-center justify-center">
-                                      <div className="min-w-0">
-                                        <p className="truncate text-sm font-black leading-tight">
+                                      <div className="min-w-0 max-w-full">
+                                        <p
+                                          className={`truncate font-black leading-tight ${
+                                            compactBlock ? 'text-xs' : 'text-sm'
+                                          }`}
+                                        >
                                           {course?.name ?? 'Course'}
                                         </p>
-                                        <p className="text-xs leading-tight text-blue-950/70">
+                                        <p
+                                          className={`text-xs leading-tight text-blue-950/70 ${
+                                            compactBlock ? 'truncate' : ''
+                                          }`}
+                                        >
                                           {block.start} - {block.end}
+                                          {compactBlock
+                                            ? ` · ${block.location || course?.room || 'Location'}`
+                                            : ''}
                                         </p>
-                                        <p className="truncate text-xs font-semibold leading-tight">
-                                          {block.location ||
-                                            course?.room ||
-                                            'Location'}
-                                        </p>
-                                        {block.type ? (
+                                        {!compactBlock ? (
+                                          <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                            {block.location ||
+                                              course?.room ||
+                                              'Location'}
+                                          </p>
+                                        ) : null}
+                                        {!compactBlock && block.type ? (
                                           <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
                                             {block.type}
                                           </p>
                                         ) : null}
-                                        {blockAssignments
-                                          .slice(0, 2)
-                                          .map((assignment) => (
-                                            <p
-                                              key={assignment.id}
-                                              className="mt-1 truncate border border-blue-300 bg-white/70 px-1 text-xs font-black leading-tight text-blue-950"
-                                            >
-                                              {assignment.type}:{' '}
-                                              {assignment.title}
-                                            </p>
-                                          ))}
+                                        {!compactBlock &&
+                                          blockAssignments
+                                            .slice(0, 2)
+                                            .map((assignment) => (
+                                              <p
+                                                key={assignment.id}
+                                                className="mt-1 truncate border border-blue-300 bg-white/70 px-1 text-xs font-black leading-tight text-blue-950"
+                                              >
+                                                {assignment.type}:{' '}
+                                                {assignment.title}
+                                              </p>
+                                            ))}
                                       </div>
                                     </div>
                                   </div>
@@ -3141,28 +3193,47 @@ export default function Home() {
                       .map((block) => {
                         const course = courseById.get(block.courseId);
                         const layout = scheduleBlockLayout(block);
+                        const compactBlock = layout.height < 58;
                         return (
                           <div
                             key={block.id}
-                            className="group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 py-1.5 text-center"
+                            className={`group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
+                              compactBlock ? 'py-1' : 'py-1.5'
+                            }`}
                             style={{
                               top: layout.top,
                               height: layout.height,
                               background: course?.color ?? '#dbeafe',
                             }}
+                            title={`${course?.name ?? 'Course'} · ${block.start} - ${block.end} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
                           >
                             <div className="flex h-full min-h-0 items-center justify-center">
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-black leading-tight">
+                              <div className="min-w-0 max-w-full">
+                                <p
+                                  className={`truncate font-black leading-tight ${
+                                    compactBlock ? 'text-xs' : 'text-sm'
+                                  }`}
+                                >
                                   {course?.name ?? 'Course'}
                                 </p>
-                                <p className="text-xs leading-tight text-blue-950/70">
+                                <p
+                                  className={`text-xs leading-tight text-blue-950/70 ${
+                                    compactBlock ? 'truncate' : ''
+                                  }`}
+                                >
                                   {block.start} - {block.end}
+                                  {compactBlock
+                                    ? ` · ${block.location || course?.room || 'Location'}`
+                                    : ''}
                                 </p>
-                                <p className="truncate text-xs font-semibold leading-tight">
-                                  {block.location || course?.room || 'Location'}
-                                </p>
-                                {block.type ? (
+                                {!compactBlock ? (
+                                  <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                    {block.location ||
+                                      course?.room ||
+                                      'Location'}
+                                  </p>
+                                ) : null}
+                                {!compactBlock && block.type ? (
                                   <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
                                     {block.type}
                                   </p>
@@ -3330,19 +3401,27 @@ export default function Home() {
                       .map((block) => {
                         const course = courseById.get(block.courseId);
                         const layout = scheduleBlockLayout(block);
+                        const compactBlock = layout.height < 64;
                         return (
                           <div
                             key={block.id}
-                            className="group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 py-1.5 text-center"
+                            className={`group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
+                              compactBlock ? 'py-1' : 'py-1.5'
+                            }`}
                             style={{
                               top: layout.top,
                               height: layout.height,
                               background: course?.color ?? '#dbeafe',
                             }}
+                            title={`${course?.name ?? 'Course'} · ${block.start} - ${block.end} · ${block.office || 'Office'} · ${block.teacher || course?.instructor || 'Professor'}`}
                           >
                             <div className="flex h-full min-h-0 items-center justify-center">
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-black leading-tight">
+                              <div className="min-w-0 max-w-full">
+                                <p
+                                  className={`truncate font-black leading-tight ${
+                                    compactBlock ? 'text-xs' : 'text-sm'
+                                  }`}
+                                >
                                   {course?.name ?? 'Course'}
                                 </p>
                                 <p className="text-xs leading-tight text-blue-950/70">
@@ -3354,7 +3433,7 @@ export default function Home() {
                                     course?.instructor ||
                                     'Professor'}
                                 </p>
-                                {block.notes ? (
+                                {!compactBlock && block.notes ? (
                                   <p className="truncate text-xs leading-tight text-blue-950/65">
                                     {block.notes}
                                   </p>
