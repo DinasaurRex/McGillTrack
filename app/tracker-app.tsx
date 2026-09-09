@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Clock3,
   Download,
+  Droplet,
   GraduationCap,
   LinkIcon,
   ListChecks,
@@ -1871,6 +1872,71 @@ function WeekdayToggleGroup({
   );
 }
 
+function ColorPickerCube({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  return (
+    <label
+      className="relative grid size-8 cursor-pointer place-items-center overflow-hidden border-2 border-blue-300 shadow-[2px_2px_0_#fef3c7]"
+      style={{ background: value || '#dbeafe' }}
+      title={label}
+      aria-label={label}
+    >
+      <Droplet className="pointer-events-none size-4 fill-white text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]" />
+      <input
+        type="color"
+        value={value || '#dbeafe'}
+        className="absolute inset-0 cursor-pointer opacity-0"
+        aria-label={label}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function CourseColorControls({
+  value,
+  onChange,
+  label,
+  size = 'md',
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  size?: 'sm' | 'md';
+}) {
+  const swatchSize = size === 'sm' ? 'size-7' : 'size-8';
+  const pickerClass = size === 'sm' ? '[&>label]:size-7' : '';
+
+  return (
+    <div className={`flex flex-wrap gap-2 ${pickerClass}`}>
+      {courseColors.map((color) => (
+        <button
+          key={color}
+          type="button"
+          aria-label={`${label} ${color}`}
+          className={`${swatchSize} border-2 ${
+            value === color ? 'border-blue-700' : 'border-blue-200'
+          }`}
+          style={{ background: color }}
+          onClick={() => onChange(color)}
+        />
+      ))}
+      <ColorPickerCube
+        value={value || '#dbeafe'}
+        label={`${label} custom color`}
+        onChange={onChange}
+      />
+    </div>
+  );
+}
+
 function MiniStat({
   label,
   value,
@@ -3178,6 +3244,59 @@ export default function Home() {
                       </span>
                     </div>
                   ))}
+                  {weeklyShowAssignments ? (
+                    <>
+                      <div className="min-h-12 border-r border-blue-200 bg-blue-50/30" />
+                      {days.map((day, dayIndex) => {
+                        const date = weeklyDates[dayIndex];
+                        const floatingAssignments = weeklyAssignments.filter(
+                          (assignment) =>
+                            !assignment.dueTime &&
+                            assignment.dueDate === date &&
+                            (!weeklyShowClasses ||
+                              !data.schedule.some(
+                                (block) =>
+                                  block.day === day &&
+                                  block.courseId === assignment.courseId,
+                              )),
+                        );
+
+                        return (
+                          <div
+                            key={`${day}-assignments`}
+                            className="min-h-12 border-r border-blue-200 bg-blue-50/30 px-1 py-1"
+                          >
+                            <div className="grid gap-1">
+                              {floatingAssignments.slice(0, 2).map((assignment) => {
+                                const course = courseById.get(
+                                  assignment.courseId,
+                                );
+                                return (
+                                  <div
+                                    key={assignment.id}
+                                    className="overflow-hidden border border-blue-300 px-2 py-0.5 text-center text-xs font-black text-blue-950"
+                                    style={{
+                                      background: course?.color ?? '#dbeafe',
+                                    }}
+                                    title={`${assignment.type}: ${assignment.title}`}
+                                  >
+                                    <p className="truncate">
+                                      {assignment.type}: {assignment.title}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                              {floatingAssignments.length > 2 ? (
+                                <div className="border border-blue-200 bg-white/70 px-2 py-0.5 text-center text-xs font-black text-blue-950/65">
+                                  +{floatingAssignments.length - 2} more
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  ) : null}
                   <div
                     className="relative border-r border-blue-200"
                     style={{ height: scheduleGridHeight }}
@@ -3199,18 +3318,6 @@ export default function Home() {
                   </div>
                   {days.map((day, dayIndex) => {
                     const date = weeklyDates[dayIndex];
-                    const unanchoredAssignments = weeklyAssignments.filter(
-                      (assignment) =>
-                        weeklyShowAssignments &&
-                        !assignment.dueTime &&
-                        assignment.dueDate === date &&
-                        (!weeklyShowClasses ||
-                          !data.schedule.some(
-                            (block) =>
-                              block.day === day &&
-                              block.courseId === assignment.courseId,
-                          )),
-                    );
                     const timedAssignments = weeklyAssignments.filter(
                       (assignment) =>
                         weeklyShowAssignments &&
@@ -3302,23 +3409,6 @@ export default function Home() {
                                 );
                               })
                           : null}
-                        {unanchoredAssignments.map((assignment, index) => {
-                          const course = courseById.get(assignment.courseId);
-                          return (
-                            <div
-                              key={assignment.id}
-                              className="absolute inset-x-1 border-2 border-blue-200 px-2 py-1 text-center text-xs font-black text-blue-950"
-                              style={{
-                                top: 6 + index * 30,
-                                background: course?.color ?? '#dbeafe',
-                              }}
-                            >
-                              <p className="truncate">
-                                {assignment.type}: {assignment.title}
-                              </p>
-                            </div>
-                          );
-                        })}
                         {timedAssignments.map((assignment) => {
                           const course = courseById.get(assignment.courseId);
                           const layout = scheduleBlockLayout({
@@ -3555,21 +3645,11 @@ export default function Home() {
                   placeholder="Lecture / lab split"
                 />
               </Field>
-              <div className="flex flex-wrap gap-2">
-                {courseColors.map((color) => (
-                  <button
-                    key={color}
-                    aria-label={`Use color ${color}`}
-                    className={`size-8 border-2 ${
-                      courseDraft.color === color
-                        ? 'border-blue-700'
-                        : 'border-blue-200'
-                    }`}
-                    style={{ background: color }}
-                    onClick={() => setCourseDraft({ ...courseDraft, color })}
-                  />
-                ))}
-              </div>
+              <CourseColorControls
+                value={courseDraft.color}
+                label="Use course color"
+                onChange={(color) => setCourseDraft({ ...courseDraft, color })}
+              />
               <Button onClick={addCourse}>
                 <Plus data-icon="inline-start" />
                 Add course
@@ -3606,23 +3686,15 @@ export default function Home() {
                         />
                       </TableCell>
                       <TableCell>
-                        <div className="flex w-44 flex-wrap gap-1.5">
-                          {courseColors.map((color) => (
-                            <button
-                              key={`${course.id}-${color}`}
-                              type="button"
-                              aria-label={`Set ${course.name || 'course'} color`}
-                              className={`size-7 border-2 ${
-                                course.color === color
-                                  ? 'border-blue-500'
-                                  : 'border-blue-200'
-                              }`}
-                              style={{ background: color }}
-                              onClick={() =>
-                                updateCourse(course.id, 'color', color)
-                              }
-                            />
-                          ))}
+                        <div className="w-48">
+                          <CourseColorControls
+                            value={course.color}
+                            size="sm"
+                            label={`Set ${course.name || 'course'} color`}
+                            onChange={(color) =>
+                              updateCourse(course.id, 'color', color)
+                            }
+                          />
                         </div>
                       </TableCell>
                       <TableCell>
@@ -4852,7 +4924,7 @@ function AssignmentPreviewList({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid min-w-0 gap-3 md:grid-cols-[repeat(2,minmax(0,1fr))]">
       {assignments.map((assignment) => {
         const course = courseById.get(assignment.courseId);
         const left = daysLeft(assignment.dueDate);
@@ -4861,7 +4933,7 @@ function AssignmentPreviewList({
         return (
           <article
             key={assignment.id}
-            className={`grid gap-2 border-2 border-blue-200 bg-white p-3 ${
+            className={`grid min-w-0 gap-2 overflow-hidden border-2 border-blue-200 bg-white p-3 ${
               overdue ? 'bg-orange-50' : ''
             }`}
           >
@@ -4871,10 +4943,10 @@ function AssignmentPreviewList({
                 style={{ background: course?.color ?? '#dbeafe' }}
               />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-black text-blue-950">
+                <p className="overflow-hidden text-sm leading-tight font-black text-blue-950 [display:-webkit-box] [overflow-wrap:anywhere] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                   {assignment.title || 'Untitled assignment'}
                 </p>
-                <p className="truncate text-xs font-semibold text-blue-950/65">
+                <p className="mt-0.5 text-xs font-semibold text-blue-950/65 [overflow-wrap:anywhere]">
                   {course?.name ?? 'Course'} · {assignment.type}
                 </p>
               </div>
