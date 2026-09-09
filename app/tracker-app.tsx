@@ -674,6 +674,14 @@ const formatScheduleHour = (hour: number) => {
   return `${hour} am`;
 };
 
+const formatDueTime = (time?: string) => {
+  if (!time) return '';
+  const [hours = 0, minutes = 0] = time.split(':').map(Number);
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${suffix}`;
+};
+
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value: number) => (Math.round(value * 10) / 10).toFixed(1);
 
@@ -807,7 +815,6 @@ export default function Home() {
   const cloudSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cloudLoaded = useRef(false);
   const syncingUserId = useRef<string | null>(null);
-  const [activeCourse, setActiveCourse] = useState(defaultData.courses[0].id);
   const activeTab = tabFromPathname(pathname);
   const [weeklyWeekStart, setWeeklyWeekStart] = useState(
     startOfWeekIso(initialTemplateDate),
@@ -816,6 +823,7 @@ export default function Home() {
   const [weeklyShowAssignments, setWeeklyShowAssignments] = useState(true);
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
+  const [todayDay, setTodayDay] = useState('Monday');
   const [user, setUser] = useState<User | null>(null);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -877,7 +885,6 @@ export default function Home() {
           );
           hydrated = true;
           setData(parsed);
-          setActiveCourse(parsed.courses[0]?.id ?? '');
           setAssignmentDraft(blankAssignment(parsed.courses[0]?.id ?? ''));
           setScheduleDraft(blankSchedule(parsed.courses[0]?.id ?? ''));
           setOfficeHourDraft(blankOfficeHour(parsed.courses[0]?.id ?? ''));
@@ -894,7 +901,6 @@ export default function Home() {
         const currentDefaults = createDefaultData(todayIso());
         const firstCourseId = currentDefaults.courses[0]?.id ?? '';
         setData(currentDefaults);
-        setActiveCourse(firstCourseId);
         setAssignmentDraft(blankAssignment(firstCourseId));
         setScheduleDraft(blankSchedule(firstCourseId));
         setOfficeHourDraft(blankOfficeHour(firstCourseId));
@@ -911,6 +917,7 @@ export default function Home() {
           day: 'numeric',
         }),
       );
+      setTodayDay(dayFromIsoDate(todayIso()) ?? 'Monday');
       setWeeklyWeekStart(startOfWeekIso(todayIso()));
       setStorageReady(true);
     });
@@ -997,7 +1004,6 @@ export default function Home() {
 
         const parsed = normalizeData(row.data as Partial<TrackerData>);
         setData(parsed);
-        setActiveCourse(parsed.courses[0]?.id ?? '');
         setAssignmentDraft(blankAssignment(parsed.courses[0]?.id ?? ''));
         setScheduleDraft(blankSchedule(parsed.courses[0]?.id ?? ''));
         setOfficeHourDraft(blankOfficeHour(parsed.courses[0]?.id ?? ''));
@@ -1089,6 +1095,28 @@ export default function Home() {
     assignmentMetrics.total > 0
       ? assignmentMetrics.done / assignmentMetrics.total
       : 0;
+  const upcomingAssignments = useMemo(
+    () =>
+      [...data.assignments]
+        .filter(
+          (assignment) => assignment.status !== 'Done' && !assignment.submitted,
+        )
+        .sort((a, b) => {
+          const dueDateDiff =
+            new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          if (dueDateDiff !== 0) return dueDateDiff;
+          return (a.dueTime ?? '').localeCompare(b.dueTime ?? '');
+        })
+        .slice(0, 8),
+    [data.assignments],
+  );
+  const todaysClasses = useMemo(
+    () =>
+      data.schedule
+        .filter((block) => block.day === todayDay)
+        .sort((a, b) => a.start.localeCompare(b.start)),
+    [data.schedule, todayDay],
+  );
   const weeklyDates = useMemo(
     () => days.map((_day, index) => addIsoDays(weeklyWeekStart, index)),
     [weeklyWeekStart],
@@ -1209,7 +1237,6 @@ export default function Home() {
       ...current,
       courses: [...current.courses, course],
     }));
-    setActiveCourse(course.id);
     setCourseDraft({
       id: makeId(),
       name: '',
@@ -1332,7 +1359,6 @@ export default function Home() {
   const resetTemplate = () => {
     const currentDefaults = createDefaultData(todayIso());
     setData(currentDefaults);
-    setActiveCourse(currentDefaults.courses[0]?.id ?? '');
   };
 
   const exportData = () => {
@@ -1440,8 +1466,8 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-[var(--background)] text-blue-950">
-      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
+    <main className="min-h-[calc(100vh+8rem)] bg-[var(--background)] text-blue-950">
+      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 pt-4 pb-32 sm:px-6 sm:pb-40 lg:px-8">
         <header className="pixel-panel grid gap-5 p-4 xl:grid-cols-[1fr_auto_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
             <div className="grid size-12 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[4px_4px_0_#dbeafe]">
@@ -1615,7 +1641,7 @@ export default function Home() {
 
           <TabsContent
             value="overview"
-            className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]"
+            className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]"
           >
             <section className="pixel-panel p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -1639,7 +1665,7 @@ export default function Home() {
                     key={status}
                     className="border-2 border-blue-200 bg-white p-3"
                   >
-                    <p className="text-xs font-bold uppercase text-blue-950/70">
+                    <p className="min-h-9 text-xs font-bold uppercase text-blue-950/70">
                       {status}
                     </p>
                     <p className="mt-2 text-3xl font-black">
@@ -1652,7 +1678,7 @@ export default function Home() {
                   </div>
                 ))}
                 <div className="border-2 border-blue-200 bg-blue-50 p-3">
-                  <p className="text-xs font-bold uppercase text-blue-950/70">
+                  <p className="min-h-9 text-xs font-bold uppercase text-blue-950/70">
                     Due This Week
                   </p>
                   <p className="mt-2 text-3xl font-black">
@@ -1663,64 +1689,26 @@ export default function Home() {
             </section>
 
             <section className="pixel-panel p-4">
-              <h2 className="mb-4 text-xl font-black">Courses</h2>
-              <div className="grid gap-3">
-                {data.courses.map((course) => {
-                  const courseAssignments = data.assignments.filter(
-                    (assignment) => assignment.courseId === course.id,
-                  );
-                  const done = courseAssignments.filter(
-                    (assignment) => assignment.status === 'Done',
-                  ).length;
-                  return (
-                    <button
-                      key={course.id}
-                      className={`grid gap-2 border-2 p-3 text-left transition hover:-translate-y-0.5 ${
-                        activeCourse === course.id
-                          ? 'border-blue-400 bg-blue-100'
-                          : 'border-blue-200 bg-white'
-                      }`}
-                      onClick={() => setActiveCourse(course.id)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="size-4 border-2 border-blue-400"
-                          style={{ background: course.color }}
-                        />
-                        <span className="font-black">{course.name}</span>
-                      </div>
-                      <span className="text-sm text-blue-950/65">
-                        {course.code || 'No code'} - {course.room || 'No room'}
-                      </span>
-                      <Progress
-                        value={
-                          courseAssignments.length > 0
-                            ? (done / courseAssignments.length) * 100
-                            : 0
-                        }
-                        className="h-2 bg-blue-50"
-                      />
-                    </button>
-                  );
-                })}
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-xl font-black">Upcoming Assignments</h2>
+                <span className="border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-950/70">
+                  {upcomingAssignments.length} open
+                </span>
               </div>
+              <AssignmentPreviewList
+                assignments={upcomingAssignments}
+                courseById={courseById}
+              />
             </section>
 
-            <section className="pixel-panel p-4 lg:col-span-2">
-              <h2 className="mb-4 text-xl font-black">Upcoming</h2>
-              <AssignmentTable
-                assignments={[...data.assignments]
-                  .filter((assignment) => assignment.status !== 'Done')
-                  .sort(
-                    (a, b) =>
-                      new Date(a.dueDate).getTime() -
-                      new Date(b.dueDate).getTime(),
-                  )
-                  .slice(0, 6)}
-                courseById={courseById}
-                updateAssignment={updateAssignment}
-                removeAssignment={(id) => removeItem('assignments', id)}
-              />
+            <section className="pixel-panel p-4 xl:col-span-2">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-xl font-black">Today&apos;s Classes</h2>
+                <span className="border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-950/70">
+                  {todayDay}
+                </span>
+              </div>
+              <TodayClassList blocks={todaysClasses} courseById={courseById} />
             </section>
           </TabsContent>
 
@@ -3374,6 +3362,126 @@ function CourseSelect({
         </NativeSelectOption>
       ))}
     </NativeSelect>
+  );
+}
+
+function AssignmentPreviewList({
+  assignments,
+  courseById,
+}: {
+  assignments: Assignment[];
+  courseById: Map<string, Course>;
+}) {
+  if (assignments.length === 0) {
+    return (
+      <div className="border-2 border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-950/70">
+        No upcoming assignments.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {assignments.map((assignment) => {
+        const course = courseById.get(assignment.courseId);
+        const left = daysLeft(assignment.dueDate);
+        const dueTime = formatDueTime(assignment.dueTime);
+        const overdue = left !== null && left < 0;
+        return (
+          <article
+            key={assignment.id}
+            className={`grid gap-2 border-2 border-blue-200 bg-white p-3 ${
+              overdue ? 'bg-orange-50' : ''
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <span
+                className="mt-1 size-4 shrink-0 border-2 border-blue-400"
+                style={{ background: course?.color ?? '#dbeafe' }}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-black text-blue-950">
+                  {assignment.title || 'Untitled assignment'}
+                </p>
+                <p className="truncate text-xs font-semibold text-blue-950/65">
+                  {course?.name ?? 'Course'} · {assignment.type}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-blue-950/70">
+              <span className="border border-blue-200 bg-blue-50 px-2 py-0.5">
+                {formatMonthDay(assignment.dueDate)}
+                {dueTime ? `, ${dueTime}` : ''}
+              </span>
+              <span className="border border-blue-200 bg-white px-2 py-0.5">
+                {assignment.week}
+              </span>
+              <span
+                className={`border px-2 py-0.5 ${
+                  overdue
+                    ? 'border-orange-300 bg-orange-100 text-orange-800'
+                    : 'border-blue-200 bg-white'
+                }`}
+              >
+                {left === null
+                  ? '-'
+                  : left < 0
+                    ? `${Math.abs(left)} late`
+                    : `${left} days`}
+              </span>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function TodayClassList({
+  blocks,
+  courseById,
+}: {
+  blocks: ScheduleBlock[];
+  courseById: Map<string, Course>;
+}) {
+  if (blocks.length === 0) {
+    return (
+      <div className="border-2 border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-950/70">
+        No classes scheduled today.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {blocks.map((block) => {
+        const course = courseById.get(block.courseId);
+        return (
+          <article
+            key={block.id}
+            className="grid gap-2 border-2 border-blue-200 p-3"
+            style={{ background: course?.color ?? '#dbeafe' }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-blue-950">
+                  {course?.name ?? 'Course'}
+                </p>
+                <p className="truncate text-xs font-semibold text-blue-950/65">
+                  {course?.code || 'No code'}
+                </p>
+              </div>
+              <span className="shrink-0 border border-blue-300 bg-white/70 px-2 py-0.5 text-xs font-black text-blue-950/70">
+                {block.start} - {block.end}
+              </span>
+            </div>
+            <p className="truncate text-xs font-semibold text-blue-950/75">
+              {block.location || course?.room || 'Location'}
+            </p>
+          </article>
+        );
+      })}
+    </div>
   );
 }
 
