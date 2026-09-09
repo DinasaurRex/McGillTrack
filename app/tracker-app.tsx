@@ -116,6 +116,8 @@ type NoteEntry = {
   title: string;
   body: string;
   pinned: boolean;
+  width?: number;
+  height?: number;
 };
 
 type HourEntry = {
@@ -1782,12 +1784,19 @@ const normalizeSchedule = (schedule = defaultData.schedule): ScheduleBlock[] =>
     type: block.type ?? '',
   }));
 
+const normalizeNotes = (notes = defaultData.notes): NoteEntry[] =>
+  notes.map((note) => ({
+    ...note,
+    width: note.width ?? undefined,
+    height: note.height ?? undefined,
+  }));
+
 const normalizeData = (incoming: Partial<TrackerData>): TrackerData => ({
   courses: incoming.courses ?? defaultData.courses,
   assignments: normalizeAssignments(incoming.assignments),
   schedule: normalizeSchedule(incoming.schedule),
   officeHours: incoming.officeHours ?? defaultData.officeHours,
-  notes: incoming.notes ?? defaultData.notes,
+  notes: normalizeNotes(incoming.notes),
   hours: incoming.hours ?? defaultData.hours,
   websites: incoming.websites ?? defaultData.websites,
   shopping: incoming.shopping ?? defaultData.shopping,
@@ -1943,6 +1952,89 @@ function CourseColorControls({
         onChange={onChange}
       />
     </div>
+  );
+}
+
+function StickyNoteCard({
+  note,
+  courseName,
+  onResize,
+  onDelete,
+}: {
+  note: NoteEntry;
+  courseName: string;
+  onResize: (
+    id: string,
+    width: number,
+    height: number,
+    shouldSnapHeight: boolean,
+  ) => void;
+  onDelete: (id: string) => void;
+}) {
+  const noteRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const element = noteRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+
+    let lastWidth = element.offsetWidth;
+    let lastHeight = element.offsetHeight;
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    const observer = new ResizeObserver(() => {
+      const width = element.offsetWidth;
+      const height = element.offsetHeight;
+      const widthChanged = Math.abs(width - lastWidth) >= 2;
+      const heightChanged = Math.abs(height - lastHeight) >= 2;
+
+      if (!widthChanged && !heightChanged) return;
+
+      lastWidth = width;
+      lastHeight = height;
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        onResize(note.id, width, height, heightChanged);
+      }, 120);
+    });
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+      if (resizeTimer) clearTimeout(resizeTimer);
+    };
+  }, [note.id, onResize]);
+
+  return (
+    <article
+      ref={noteRef}
+      className="pixel-panel grid min-h-[180px] min-w-[260px] max-w-full resize overflow-auto p-4"
+      style={{
+        width: note.width ?? 360,
+        height: note.height ?? 260,
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <p className="text-[13px] font-bold uppercase text-blue-950/70">
+            {courseName}
+          </p>
+          <h3 className="text-xl font-black leading-tight">
+            {note.title || 'Untitled note'}
+          </h3>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Delete note"
+          onClick={() => onDelete(note.id)}
+        >
+          <Trash2 />
+        </Button>
+      </div>
+      <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-blue-950/75">
+        {note.body || 'No note text yet.'}
+      </p>
+    </article>
   );
 }
 
@@ -2481,6 +2573,54 @@ export default function Home() {
       ),
     }));
   };
+
+  const saveNoteSize = useCallback(
+    (id: string, width: number, height: number, shouldSnapHeight: boolean) => {
+      const nextWidth = clampNumber(Math.round(width), 260, 720);
+      const rawHeight = clampNumber(Math.round(height), 180, 620);
+
+      setData((current) => {
+        let changed = false;
+        const snapHeights = shouldSnapHeight
+          ? current.notes
+              .filter((item) => item.id !== id)
+              .map((item) => item.height ?? 260)
+          : [];
+        const nearestSnapHeight = snapHeights.reduce<number | null>(
+          (nearest, candidate) => {
+            const currentDistance =
+              nearest === null
+                ? Number.POSITIVE_INFINITY
+                : Math.abs(rawHeight - nearest);
+            const candidateDistance = Math.abs(rawHeight - candidate);
+            return candidateDistance < currentDistance ? candidate : nearest;
+          },
+          null,
+        );
+        const nextHeight =
+          nearestSnapHeight !== null &&
+          Math.abs(rawHeight - nearestSnapHeight) <= 28
+            ? nearestSnapHeight
+            : rawHeight;
+      const notes = current.notes.map((item) => {
+        if (item.id !== id) return item;
+        if (item.width === nextWidth && item.height === nextHeight) {
+          return item;
+        }
+
+        changed = true;
+        return {
+          ...item,
+          width: nextWidth,
+          height: nextHeight,
+        };
+      });
+
+      return changed ? { ...current, notes } : current;
+      });
+    },
+    [],
+  );
 
   const updateScheduleBlockTime = (
     id: string,
@@ -4683,7 +4823,7 @@ export default function Home() {
 
           <TabsContent
             value="notes"
-            className="grid gap-4 lg:grid-cols-[360px_1fr]"
+            className="grid items-start gap-4 lg:grid-cols-[360px_1fr]"
           >
             <section className="pixel-panel grid gap-3 p-4">
               <h2 className="text-xl font-black">New Note</h2>
@@ -4727,33 +4867,17 @@ export default function Home() {
                 Add note
               </Button>
             </section>
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <section className="flex flex-wrap items-start gap-4">
               {[...data.notes]
                 .sort((a, b) => Number(b.pinned) - Number(a.pinned))
                 .map((note) => (
-                  <article key={note.id} className="pixel-panel grid gap-3 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-bold uppercase text-blue-950/70">
-                          {courseById.get(note.courseId)?.name ?? 'General'}
-                        </p>
-                        <h3 className="text-lg font-black">
-                          {note.title || 'Untitled note'}
-                        </h3>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Delete note"
-                        onClick={() => removeItem('notes', note.id)}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-blue-950/75">
-                      {note.body || 'No note text yet.'}
-                    </p>
-                  </article>
+                  <StickyNoteCard
+                    key={note.id}
+                    note={note}
+                    courseName={courseById.get(note.courseId)?.name ?? 'General'}
+                    onResize={saveNoteSize}
+                    onDelete={(id) => removeItem('notes', id)}
+                  />
                 ))}
             </section>
           </TabsContent>
