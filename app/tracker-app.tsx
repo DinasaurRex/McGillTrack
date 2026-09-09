@@ -1236,6 +1236,534 @@ const mergeStudentScheduleImport = (
   };
 };
 
+const excelColumnName = (column: number) => {
+  let name = '';
+  let current = column;
+
+  while (current > 0) {
+    const index = (current - 1) % 26;
+    name = `${String.fromCharCode(65 + index)}${name}`;
+    current = Math.floor((current - index - 1) / 26);
+  }
+
+  return name;
+};
+
+const excelAddress = (column: number, row: number) =>
+  `${excelColumnName(column)}${row}`;
+
+const excelSheet = (workbook: ExcelWorkbook, sheetName: string) =>
+  workbook.Sheets[sheetName] ??
+  Object.entries(workbook.Sheets).find(
+    ([name]) => name.toLowerCase() === sheetName.toLowerCase(),
+  )?.[1];
+
+const excelCell = (sheet: ExcelSheet | undefined, column: number, row: number) => {
+  const cell = sheet?.[excelAddress(column, row)];
+  return typeof cell === 'object' && cell !== null ? cell : undefined;
+};
+
+const excelRawValue = (
+  sheet: ExcelSheet | undefined,
+  column: number,
+  row: number,
+) => excelCell(sheet, column, row)?.v;
+
+const cleanExcelText = (value: unknown) => {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return dateToIso(value);
+  if (typeof value === 'string') return value.replace(/\s+/g, ' ').trim();
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).replace(/\s+/g, ' ').trim();
+  }
+  return '';
+};
+
+const optionalExcelText = (value: unknown) => {
+  const text = cleanExcelText(value);
+  return /^(n\/a|na|none|null|undefined)$/i.test(text) ? '' : text;
+};
+
+const excelText = (sheet: ExcelSheet | undefined, column: number, row: number) => {
+  const cell = excelCell(sheet, column, row);
+  if (!cell) return '';
+  return optionalExcelText(cell.v ?? cell.w);
+};
+
+const excelNumber = (
+  sheet: ExcelSheet | undefined,
+  column: number,
+  row: number,
+) => {
+  const raw = excelRawValue(sheet, column, row);
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const parsed = Number(cleanExcelText(raw).replace(/%$/, ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const excelBoolean = (
+  sheet: ExcelSheet | undefined,
+  column: number,
+  row: number,
+) => {
+  const raw = excelRawValue(sheet, column, row);
+  if (typeof raw === 'boolean') return raw;
+  if (typeof raw === 'number') return raw > 0;
+  const text = cleanExcelText(raw).toLowerCase();
+  return ['true', 'yes', 'y', 'done', 'submitted', 'graded', '1'].includes(
+    text,
+  );
+};
+
+const excelDateSerialToIso = (serial: number) => {
+  const utcDate = new Date(Math.floor(serial - 25569) * 86400000);
+  return dateToIso(
+    new Date(
+      utcDate.getUTCFullYear(),
+      utcDate.getUTCMonth(),
+      utcDate.getUTCDate(),
+    ),
+  );
+};
+
+const excelValueToIsoDate = (value: unknown) => {
+  if (value instanceof Date) return dateToIso(value);
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return excelDateSerialToIso(value);
+  }
+
+  const text = cleanExcelText(value);
+  if (!text) return '';
+  const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? '' : dateToIso(parsed);
+};
+
+const excelValueToTime = (value: unknown) => {
+  if (value instanceof Date) {
+    return minutesToTime(value.getHours() * 60 + value.getMinutes());
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value >= 0 && value < 1) {
+      return minutesToTime(Math.round(value * 24 * 60));
+    }
+
+    const asText = String(Math.round(value)).padStart(3, '0');
+    if (asText.length <= 4) {
+      const hours = Number(asText.slice(0, -2));
+      const minutes = Number(asText.slice(-2));
+      if (hours < 24 && minutes < 60) return minutesToTime(hours * 60 + minutes);
+    }
+  }
+
+  const text = cleanExcelText(value);
+  const match = text.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!match) return '';
+
+  let hours = Number(match[1]);
+  const minutes = Number(match[2] ?? 0);
+  const meridiem = match[3]?.toLowerCase();
+  if (meridiem === 'pm' && hours < 12) hours += 12;
+  if (meridiem === 'am' && hours === 12) hours = 0;
+
+  return hours < 24 && minutes < 60 ? minutesToTime(hours * 60 + minutes) : '';
+};
+
+const excelValueToOptionalTime = (value: unknown) => {
+  if (value instanceof Date) {
+    const minutes = value.getHours() * 60 + value.getMinutes();
+    return minutes > 0 ? minutesToTime(minutes) : '';
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const fraction = value - Math.floor(value);
+    return fraction > 0 ? minutesToTime(Math.round(fraction * 24 * 60)) : '';
+  }
+
+  const text = cleanExcelText(value);
+  return /(\d{1,2}:\d{2}|\b(?:am|pm)\b)/i.test(text)
+    ? excelValueToTime(text)
+    : '';
+};
+
+const courseSearchKey = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/\bintroducion\b/g, 'introduction')
+    .replace(/\bintro\b/g, 'introduction')
+    .replace(/\bcomputure\b/g, 'computer')
+    .replace(/\bcomp\b/g, 'computer')
+    .replace(/\bsofeware\b/g, 'software')
+    .replace(/\bsyst\b/g, 'systems')
+    .replace(/\bsci\b/g, 'science')
+    .replace(/\bneuro\b/g, 'neuroscience')
+    .replace(/\bstats\b/g, 'statistics')
+    .replace(/\bexp\b/g, 'experimental')
+    .replace(/\bdesgin\b/g, 'design')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter((word) => word && !['to', 'for', 'of', 'the', 'and'].includes(word))
+    .join(' ');
+
+const findMatchingCourse = (courses: Course[], value: string) => {
+  const key = courseSearchKey(value);
+  if (!key) return undefined;
+
+  return (
+    courses.find(
+      (course) =>
+        courseSearchKey(course.name) === key ||
+        (!!course.code && course.code.toLowerCase() === value.toLowerCase()),
+    ) ??
+    courses.find((course) => {
+      const courseKey = courseSearchKey(course.name);
+      return (
+        !!courseKey &&
+        (key.includes(courseKey) || courseKey.includes(key)) &&
+        Math.min(key.length, courseKey.length) > 7
+      );
+    })
+  );
+};
+
+const shouldImportSetupCourse = (name: string) =>
+  !!name &&
+  !/^class\s+\d+$/i.test(name) &&
+  !/^(random|n\/a|na)$/i.test(name);
+
+const firstExcelTextInRange = (
+  sheet: ExcelSheet | undefined,
+  row: number,
+  startColumn: number,
+  endColumn: number,
+  predicate: (value: string) => boolean = Boolean,
+) => {
+  for (let column = startColumn; column <= endColumn; column += 1) {
+    const text = excelText(sheet, column, row);
+    if (predicate(text)) return text;
+  }
+
+  return '';
+};
+
+const readExcelSetupCourses = (workbook: ExcelWorkbook) => {
+  const setup = excelSheet(workbook, 'Setup');
+  const courses: Course[] = [];
+
+  for (let row = 10; row <= 16; row += 1) {
+    const name = excelText(setup, 2, row);
+    if (!shouldImportSetupCourse(name)) continue;
+
+    courses.push({
+      id: makeId(),
+      name,
+      code: '',
+      room: excelText(setup, 4, row),
+      instructor: '',
+      email: '',
+      section: '',
+      teams: '',
+      extension: '',
+      weeklyPonderation: '',
+      credits: 3,
+      color: courseColors[courses.length % courseColors.length],
+    });
+  }
+
+  return courses;
+};
+
+const enrichCoursesFromClassOutline = (
+  workbook: ExcelWorkbook,
+  courses: Course[],
+) => {
+  const outline = excelSheet(workbook, 'Class Outline');
+  if (!outline) return;
+
+  const groupStarts = [2, 9, 16, 23, 30];
+  const rowGroups = [
+    { title: 2, values: 21, room: 24, contact: 17 },
+    { title: 27, values: 45, room: 48, contact: 41 },
+  ];
+
+  rowGroups.forEach((rowGroup) => {
+    groupStarts.forEach((startColumn) => {
+      const title = excelText(outline, startColumn, rowGroup.title);
+      const course = findMatchingCourse(courses, title);
+      if (!course) return;
+
+      const code = excelText(outline, startColumn, rowGroup.values);
+      const credits = excelNumber(outline, startColumn + 4, rowGroup.values);
+      const room =
+        excelText(outline, startColumn + 4, rowGroup.room) ||
+        firstExcelTextInRange(outline, rowGroup.room, startColumn, startColumn + 6);
+      const email =
+        firstExcelTextInRange(
+          outline,
+          rowGroup.contact - 1,
+          startColumn,
+          startColumn + 6,
+          (value) => value.includes('@'),
+        ) ||
+        firstExcelTextInRange(
+          outline,
+          rowGroup.contact,
+          startColumn,
+          startColumn + 6,
+          (value) => value.includes('@'),
+        );
+      const teams = firstExcelTextInRange(
+        outline,
+        rowGroup.contact,
+        startColumn,
+        startColumn + 6,
+        (value) => !value.includes('@') && !/^(teams|contact info)$/i.test(value),
+      );
+
+      if (code) course.code = code;
+      if (credits > 0) course.credits = credits;
+      if (room) course.room = room;
+      if (email) course.email = email;
+      if (teams) course.teams = teams;
+    });
+  });
+};
+
+const normalizeAssignmentType = (value: string): AssignmentType => {
+  const match = assignmentTypes.find(
+    (type) => type.toLowerCase() === value.toLowerCase(),
+  );
+  return match ?? 'Assignment';
+};
+
+const normalizeAssignmentStatus = (value: string, submitted: boolean): Status => {
+  const text = value.toLowerCase();
+  if (text.includes('done') || submitted) return 'Done';
+  if (text.includes('progress')) return 'In Progress';
+  return 'Not Started';
+};
+
+const normalizePriority = (value: string): Priority => {
+  const match = priorities.find(
+    (priority) => priority.toLowerCase() === value.toLowerCase(),
+  );
+  return match ?? 'Medium';
+};
+
+const normalizeWeight = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return value <= 1 ? Math.round(value * 10000) / 100 : value;
+};
+
+const assignmentImportKey = (courseId: string, title: string) =>
+  `${courseId}:${title.toLowerCase().replace(/\s+/g, ' ').trim()}`;
+
+const readGradebookScores = (workbook: ExcelWorkbook, courses: Course[]) => {
+  const gradebook = excelSheet(workbook, 'Gradebook');
+  const scores = new Map<
+    string,
+    { score: number; maxScore: number; weight: number; graded: boolean }
+  >();
+
+  for (let row = 8; row <= 250; row += 1) {
+    const subject = excelText(gradebook, 2, row);
+    const title = excelText(gradebook, 3, row);
+    const course = findMatchingCourse(courses, subject);
+    if (!course || !title) continue;
+
+    const percentage = excelNumber(gradebook, 6, row);
+    const weight = normalizeWeight(excelNumber(gradebook, 8, row));
+    if (percentage <= 0 && weight <= 0) continue;
+
+    scores.set(assignmentImportKey(course.id, title), {
+      score:
+        percentage > 0
+          ? Math.round((percentage <= 1 ? percentage * 100 : percentage) * 100) /
+            100
+          : 0,
+      maxScore: 100,
+      weight,
+      graded: percentage > 0,
+    });
+  }
+
+  return scores;
+};
+
+const getOrCreateImportedCourse = (courses: Course[], subject: string) => {
+  const existing = findMatchingCourse(courses, subject);
+  if (existing) return existing;
+
+  const course: Course = {
+    id: makeId(),
+    name: subject,
+    code: '',
+    room: '',
+    instructor: '',
+    email: '',
+    section: '',
+    teams: '',
+    extension: '',
+    weeklyPonderation: '',
+    credits: 3,
+    color: courseColors[courses.length % courseColors.length],
+  };
+  courses.push(course);
+  return course;
+};
+
+const readExcelAssignments = (workbook: ExcelWorkbook, courses: Course[]) => {
+  const sheet = excelSheet(workbook, 'Assignment Tracker');
+  const scores = readGradebookScores(workbook, courses);
+  const assignments: Assignment[] = [];
+
+  for (let row = 8; row <= 1000; row += 1) {
+    const subject = excelText(sheet, 2, row);
+    const title = excelText(sheet, 3, row);
+    if (!subject || !title || /^subject$/i.test(subject)) continue;
+
+    const course = getOrCreateImportedCourse(courses, subject);
+    const submitted = excelBoolean(sheet, 13, row);
+    const graded = excelBoolean(sheet, 14, row);
+    const dueValue = excelRawValue(sheet, 10, row);
+    const score = scores.get(assignmentImportKey(course.id, title));
+    const importedWeight = normalizeWeight(excelNumber(sheet, 7, row));
+
+    assignments.push({
+      id: makeId(),
+      courseId: course.id,
+      title,
+      type: normalizeAssignmentType(excelText(sheet, 4, row)),
+      status: normalizeAssignmentStatus(excelText(sheet, 5, row), submitted),
+      priority: normalizePriority(excelText(sheet, 6, row)),
+      week: weeks.includes(excelText(sheet, 9, row))
+        ? excelText(sheet, 9, row)
+        : 'Week 1',
+      dueDate: excelValueToIsoDate(dueValue) || todayIso(),
+      dueTime: excelValueToOptionalTime(dueValue),
+      weight: importedWeight || score?.weight || 0,
+      submitted,
+      graded: graded || !!score?.graded,
+      score: score?.score ?? 0,
+      maxScore: score?.maxScore ?? 100,
+      submission: excelText(sheet, 16, row),
+      partner: excelText(sheet, 8, row),
+      notes: excelText(sheet, 17, row),
+    });
+  }
+
+  return assignments;
+};
+
+const readExcelSchedule = (workbook: ExcelWorkbook, courses: Course[]) => {
+  const sheet = excelSheet(workbook, 'Schedule F2026');
+  const schedule: ScheduleBlock[] = [];
+  if (!sheet) return schedule;
+
+  const dayColumns = [
+    { column: 3, day: 'Monday' },
+    { column: 4, day: 'Tuesday' },
+    { column: 5, day: 'Wednesday' },
+    { column: 6, day: 'Thursday' },
+    { column: 7, day: 'Friday' },
+  ];
+
+  dayColumns.forEach(({ column, day }) => {
+    for (let row = 7; row <= 60; row += 1) {
+      const text = excelText(sheet, column, row);
+      const course = findMatchingCourse(courses, text);
+      const start = excelValueToTime(excelRawValue(sheet, 2, row));
+      if (!course || !start) continue;
+
+      let location = '';
+      let locationRow = row;
+      for (let nextRow = row + 1; nextRow <= Math.min(row + 4, 60); nextRow += 1) {
+        const nextText = excelText(sheet, column, nextRow);
+        if (!nextText) continue;
+        if (findMatchingCourse(courses, nextText)) break;
+        location = nextText;
+        locationRow = nextRow;
+        break;
+      }
+
+      const end =
+        excelValueToTime(excelRawValue(sheet, 2, locationRow + 1)) ||
+        addMinutesToTime(start, 60);
+
+      schedule.push({
+        id: makeId(),
+        courseId: course.id,
+        day,
+        start,
+        end,
+        location: location || course.room,
+        type: '',
+      });
+    }
+  });
+
+  return schedule;
+};
+
+const readExcelHours = (workbook: ExcelWorkbook) => {
+  const sheet = excelSheet(workbook, 'Sir Hours Tracker');
+  const hours: HourEntry[] = [];
+
+  for (let row = 8; row <= 250; row += 1) {
+    const event = excelText(sheet, 2, row);
+    const project = excelText(sheet, 3, row);
+    const date = excelValueToIsoDate(excelRawValue(sheet, 4, row));
+    const start = excelValueToTime(excelRawValue(sheet, 5, row));
+    const end = excelValueToTime(excelRawValue(sheet, 6, row));
+    if (!event || !date || !start || !end) continue;
+
+    hours.push({
+      id: makeId(),
+      event,
+      project,
+      date,
+      start,
+      end,
+      notes: excelText(sheet, 9, row),
+    });
+  }
+
+  return hours;
+};
+
+const parseAnnabelleExcelWorkbook = (workbook: ExcelWorkbook): ExcelImportResult => {
+  const courses = readExcelSetupCourses(workbook);
+  enrichCoursesFromClassOutline(workbook, courses);
+
+  const assignments = readExcelAssignments(workbook, courses);
+  const schedule = readExcelSchedule(workbook, courses);
+  const hours = readExcelHours(workbook);
+
+  return {
+    data: {
+      courses,
+      assignments,
+      schedule,
+      officeHours: [],
+      notes: [],
+      hours,
+      websites: [],
+      shopping: [],
+      homework: [],
+      todos: [],
+    },
+    courses: courses.length,
+    assignments: assignments.length,
+    schedule: schedule.length,
+    hours: hours.length,
+  };
+};
+
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value: number) => (Math.round(value * 10) / 10).toFixed(1);
 
@@ -1371,6 +1899,7 @@ export default function Home() {
   const pathname = usePathname();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const schedulePdfInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
   const dataRef = useRef(defaultData);
   const scheduleResizeRef = useRef<{
@@ -2093,6 +2622,58 @@ export default function Home() {
     }
   };
 
+  const importExcelSetup = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setAuthMessage('Reading Excel setup...');
+      const xlsx = await import('xlsx');
+      const workbook = xlsx.read(await file.arrayBuffer(), {
+        type: 'array',
+        cellDates: true,
+      }) as ExcelWorkbook;
+      const result = parseAnnabelleExcelWorkbook(workbook);
+
+      if (
+        result.courses === 0 &&
+        result.assignments === 0 &&
+        result.schedule === 0
+      ) {
+        throw new Error('No tracker data was found in that workbook.');
+      }
+
+      const firstCourseId = result.data.courses[0]?.id ?? '';
+      setData(result.data);
+      setAssignmentDraft(blankAssignment(firstCourseId));
+      setScheduleDraft(blankSchedule(firstCourseId));
+      setScheduleDraftDays(['Monday']);
+      setOfficeHourDraft(blankOfficeHour(firstCourseId));
+      setOfficeHourDraftDays(['Monday']);
+      setNoteDraft(blankNote(firstCourseId));
+      setHourDraft(blankHour());
+      setWebsiteDraft(blankWebsite(firstCourseId));
+      setShoppingDraft(blankShoppingItem(firstCourseId));
+      setHomeworkDraft(blankHomeworkItem(firstCourseId));
+      setTodoDraft(blankTodoItem());
+
+      setAuthMessage(
+        `Imported ${result.courses} courses, ${result.assignments} assignments, ${result.schedule} schedule blocks, and ${result.hours} hour entries from Excel.`,
+      );
+    } catch (error) {
+      setAuthMessage('Excel import failed.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'That Excel file could not be imported.',
+      );
+    } finally {
+      event.target.value = '';
+    }
+  };
+
   const handleAuth = async (mode: 'sign-in' | 'sign-up') => {
     if (!supabase) {
       setAuthMessage('Supabase is not configured.');
@@ -2197,6 +2778,13 @@ export default function Home() {
             </Button>
             <Button
               variant="outline"
+              onClick={() => excelInputRef.current?.click()}
+            >
+              <Upload data-icon="inline-start" />
+              Import Excel
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload data-icon="inline-start" />
@@ -2212,6 +2800,13 @@ export default function Home() {
               type="file"
               accept="application/pdf"
               onChange={(event) => void importSchedulePdf(event)}
+            />
+            <input
+              ref={excelInputRef}
+              className="hidden"
+              type="file"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              onChange={(event) => void importExcelSetup(event)}
             />
             <input
               ref={fileInputRef}
