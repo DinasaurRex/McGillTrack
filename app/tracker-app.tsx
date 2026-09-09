@@ -243,6 +243,28 @@ type ScheduleImportResult = {
   skippedBlocks: number;
 };
 
+type ExcelCell = {
+  v?: unknown;
+  w?: string;
+  t?: string;
+};
+
+type ExcelSheet = Record<string, ExcelCell | string | undefined> & {
+  '!ref'?: string;
+};
+
+type ExcelWorkbook = {
+  Sheets: Record<string, ExcelSheet | undefined>;
+};
+
+type ExcelImportResult = {
+  data: TrackerData;
+  courses: number;
+  assignments: number;
+  schedule: number;
+  hours: number;
+};
+
 const statuses: Status[] = ['Not Started', 'In Progress', 'Done'];
 const priorities: Priority[] = ['Low', 'Medium', 'High', 'Super High'];
 const assignmentTypes: AssignmentType[] = [
