@@ -326,7 +326,7 @@ const shortMonths = [
 ];
 const courseColors = ['#dbeafe', '#bfdbfe', '#eff6ff', '#fef3c7', '#e0f2fe'];
 const storageKey = 'mcgilltrack-template-v1';
-const cloudSaveDelay = 1200;
+const cloudSaveDelay = 400;
 const scheduleTypes = [
   'Lab-Tutorial',
   'Laboratory',
@@ -1902,6 +1902,7 @@ export default function Home() {
   const excelInputRef = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
   const dataRef = useRef(defaultData);
+  const userRef = useRef<User | null>(null);
   const scheduleResizeRef = useRef<{
     edge: 'start' | 'end';
     id: string;
@@ -2031,6 +2032,10 @@ export default function Home() {
   }, [data]);
 
   useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
     if (!resizingScheduleBlockId) return;
 
     const previousUserSelect = document.body.style.userSelect;
@@ -2042,7 +2047,7 @@ export default function Home() {
   }, [resizingScheduleBlockId]);
 
   const saveCloudData = useCallback(
-    async (currentUser = user, trackerData = dataRef.current) => {
+    async (currentUser = userRef.current, trackerData = dataRef.current) => {
       if (!supabase || !currentUser) return false;
       setCloudStatus('saving');
       setAuthMessage('');
@@ -2077,11 +2082,11 @@ export default function Home() {
         return false;
       }
     },
-    [user],
+    [],
   );
 
   const loadCloudData = useCallback(
-    async (currentUser = user) => {
+    async (currentUser = userRef.current) => {
       if (!supabase || !currentUser) return;
       if (syncingUserId.current === currentUser.id) return;
 
@@ -2133,8 +2138,53 @@ export default function Home() {
         syncingUserId.current = null;
       }
     },
-    [saveCloudData, user],
+    [saveCloudData],
   );
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    let cancelled = false;
+
+    const applySessionUser = async (sessionUser: User | null) => {
+      if (cancelled) return;
+      setUser(sessionUser);
+
+      if (!sessionUser) {
+        cloudLoaded.current = false;
+        setCloudStatus('local');
+        return;
+      }
+
+      setAuthEmail(sessionUser.email ?? '');
+      if (cloudLoaded.current && userRef.current?.id === sessionUser.id) return;
+
+      cloudLoaded.current = false;
+      await loadCloudData(sessionUser);
+    };
+
+    void supabase.auth.getSession().then(({ data: sessionData, error }) => {
+      if (cancelled) return;
+      if (error) {
+        setCloudStatus('offline');
+        setAuthMessage(cloudErrorMessage(error.message));
+        return;
+      }
+
+      void applySessionUser(sessionData.session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      void applySessionUser(session?.user ?? null);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [loadCloudData]);
 
   useEffect(() => {
     if (!supabase || !user || !cloudLoaded.current || !storageReady) return;
@@ -2148,6 +2198,36 @@ export default function Home() {
       if (cloudSaveTimer.current) clearTimeout(cloudSaveTimer.current);
     };
   }, [data, saveCloudData, storageReady, user]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+
+    const flushLatestData = () => {
+      localStorage.setItem(storageKey, JSON.stringify(dataRef.current));
+
+      if (cloudSaveTimer.current) {
+        clearTimeout(cloudSaveTimer.current);
+        cloudSaveTimer.current = null;
+      }
+
+      if (supabase && userRef.current && cloudLoaded.current) {
+        void saveCloudData(userRef.current, dataRef.current);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushLatestData();
+    };
+
+    window.addEventListener('pagehide', flushLatestData);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('pagehide', flushLatestData);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      flushLatestData();
+    };
+  }, [saveCloudData, storageReady]);
 
   const courseById = useMemo(
     () => new Map(data.courses.map((course) => [course.id, course])),

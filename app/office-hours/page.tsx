@@ -1,5 +1,3 @@
-import TrackerApp from '../tracker-app';
-
 export default function OfficeHoursPage() {
-  return <TrackerApp />;
+  return null;
 }
