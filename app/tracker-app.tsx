@@ -1967,7 +1967,7 @@ function StickyNoteCard({
     id: string,
     width: number,
     height: number,
-    shouldSnapHeight: boolean,
+    snapHeight: number | null,
   ) => void;
   onDelete: (id: string) => void;
 }) {
@@ -1988,11 +1988,35 @@ function StickyNoteCard({
 
       if (!widthChanged && !heightChanged) return;
 
+      const otherHeights = heightChanged
+        ? Array.from(
+            document.querySelectorAll<HTMLElement>('[data-note-card]'),
+          )
+            .filter((card) => card.dataset.noteId !== note.id)
+            .map((card) => card.offsetHeight)
+        : [];
+      const nearestHeight = otherHeights.reduce<number | null>(
+        (nearest, candidate) => {
+          const currentDistance =
+            nearest === null
+              ? Number.POSITIVE_INFINITY
+              : Math.abs(height - nearest);
+          const candidateDistance = Math.abs(height - candidate);
+          return candidateDistance < currentDistance ? candidate : nearest;
+        },
+        null,
+      );
+      const snapHeight =
+        nearestHeight !== null && Math.abs(height - nearestHeight) <= 36
+          ? nearestHeight
+          : null;
+
       lastWidth = width;
-      lastHeight = height;
+      lastHeight = snapHeight ?? height;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        onResize(note.id, width, height, heightChanged);
+        if (snapHeight !== null) element.style.height = `${snapHeight}px`;
+        onResize(note.id, width, height, snapHeight);
       }, 120);
     });
 
@@ -2007,6 +2031,8 @@ function StickyNoteCard({
   return (
     <article
       ref={noteRef}
+      data-note-card
+      data-note-id={note.id}
       className="pixel-panel grid min-h-[180px] min-w-[260px] max-w-full resize overflow-auto p-4"
       style={{
         width: note.width ?? 360,
@@ -2575,48 +2601,27 @@ export default function Home() {
   };
 
   const saveNoteSize = useCallback(
-    (id: string, width: number, height: number, shouldSnapHeight: boolean) => {
+    (id: string, width: number, height: number, snapHeight: number | null) => {
       const nextWidth = clampNumber(Math.round(width), 260, 720);
-      const rawHeight = clampNumber(Math.round(height), 180, 620);
+      const nextHeight = clampNumber(Math.round(snapHeight ?? height), 180, 620);
 
       setData((current) => {
         let changed = false;
-        const snapHeights = shouldSnapHeight
-          ? current.notes
-              .filter((item) => item.id !== id)
-              .map((item) => item.height ?? 260)
-          : [];
-        const nearestSnapHeight = snapHeights.reduce<number | null>(
-          (nearest, candidate) => {
-            const currentDistance =
-              nearest === null
-                ? Number.POSITIVE_INFINITY
-                : Math.abs(rawHeight - nearest);
-            const candidateDistance = Math.abs(rawHeight - candidate);
-            return candidateDistance < currentDistance ? candidate : nearest;
-          },
-          null,
-        );
-        const nextHeight =
-          nearestSnapHeight !== null &&
-          Math.abs(rawHeight - nearestSnapHeight) <= 28
-            ? nearestSnapHeight
-            : rawHeight;
-      const notes = current.notes.map((item) => {
-        if (item.id !== id) return item;
-        if (item.width === nextWidth && item.height === nextHeight) {
-          return item;
-        }
+        const notes = current.notes.map((item) => {
+          if (item.id !== id) return item;
+          if (item.width === nextWidth && item.height === nextHeight) {
+            return item;
+          }
 
-        changed = true;
-        return {
-          ...item,
-          width: nextWidth,
-          height: nextHeight,
-        };
-      });
+          changed = true;
+          return {
+            ...item,
+            width: nextWidth,
+            height: nextHeight,
+          };
+        });
 
-      return changed ? { ...current, notes } : current;
+        return changed ? { ...current, notes } : current;
       });
     },
     [],
