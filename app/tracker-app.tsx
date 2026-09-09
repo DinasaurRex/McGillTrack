@@ -2729,6 +2729,42 @@ export default function Home() {
     setAssignmentDraft(blankAssignment(assignmentDraft.courseId));
   };
 
+  const createCustomCourse = useCallback((name: string) => {
+    const cleanName = name.trim();
+    const matchingCourse = dataRef.current.courses.find(
+      (course) => course.name.trim().toLowerCase() === cleanName.toLowerCase(),
+    );
+
+    if (matchingCourse) return matchingCourse.id;
+
+    const id = makeId();
+    const color =
+      courseColors[dataRef.current.courses.length % courseColors.length];
+
+    setData((current) => ({
+      ...current,
+      courses: [
+        ...current.courses,
+        {
+          id,
+          name: cleanName,
+          code: '',
+          room: '',
+          instructor: '',
+          email: '',
+          section: '',
+          teams: '',
+          extension: '',
+          weeklyPonderation: '',
+          credits: 0,
+          color,
+        },
+      ],
+    }));
+
+    return id;
+  }, []);
+
   const addCourse = () => {
     if (!courseDraft.name.trim()) return;
     const course = { ...courseDraft, id: makeId() };
@@ -3602,6 +3638,7 @@ export default function Home() {
               <Field label="Course">
                 <CourseSelect
                   courses={data.courses}
+                  onCreateCustom={createCustomCourse}
                   value={assignmentDraft.courseId}
                   onChange={(value) =>
                     setAssignmentDraft({ ...assignmentDraft, courseId: value })
@@ -4132,6 +4169,7 @@ export default function Home() {
               <Field label="Course">
                 <CourseSelect
                   courses={data.courses}
+                  onCreateCustom={createCustomCourse}
                   value={scheduleDraft.courseId}
                   onChange={(value) =>
                     setScheduleDraft({ ...scheduleDraft, courseId: value })
@@ -4338,6 +4376,7 @@ export default function Home() {
               <Field label="Course">
                 <CourseSelect
                   courses={data.courses}
+                  onCreateCustom={createCustomCourse}
                   value={officeHourDraft.courseId}
                   onChange={(value) =>
                     setOfficeHourDraft({
@@ -4541,6 +4580,7 @@ export default function Home() {
                 <Field label="Course">
                   <CourseSelect
                     courses={data.courses}
+                    onCreateCustom={createCustomCourse}
                     value={websiteDraft.courseId}
                     onChange={(value) =>
                       setWebsiteDraft({ ...websiteDraft, courseId: value })
@@ -4635,6 +4675,7 @@ export default function Home() {
                 <Field label="Course">
                   <CourseSelect
                     courses={data.courses}
+                    onCreateCustom={createCustomCourse}
                     value={shoppingDraft.courseId}
                     onChange={(value) =>
                       setShoppingDraft({ ...shoppingDraft, courseId: value })
@@ -4707,6 +4748,7 @@ export default function Home() {
                 <Field label="Course">
                   <CourseSelect
                     courses={data.courses}
+                    onCreateCustom={createCustomCourse}
                     value={homeworkDraft.courseId}
                     onChange={(value) =>
                       setHomeworkDraft({ ...homeworkDraft, courseId: value })
@@ -4835,6 +4877,7 @@ export default function Home() {
               <Field label="Course">
                 <CourseSelect
                   courses={data.courses}
+                  onCreateCustom={createCustomCourse}
                   value={noteDraft.courseId}
                   onChange={(value) =>
                     setNoteDraft({ ...noteDraft, courseId: value })
@@ -5027,15 +5070,33 @@ function CourseSelect({
   courses,
   value,
   onChange,
+  onCreateCustom,
 }: {
   courses: Course[];
   value: string;
   onChange: (value: string) => void;
+  onCreateCustom?: (name: string) => string;
 }) {
+  const customOptionValue = '__custom_course__';
+  const handleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedValue = event.target.value;
+
+    if (selectedValue !== customOptionValue) {
+      onChange(selectedValue);
+      return;
+    }
+
+    const customName = window.prompt('Name this custom class or category');
+    const cleanName = customName?.trim();
+    if (!cleanName || !onCreateCustom) return;
+
+    onChange(onCreateCustom(cleanName));
+  };
+
   return (
     <NativeSelect
       value={value}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={handleChange}
       className="w-full"
     >
       {courses.map((course) => (
@@ -5043,6 +5104,11 @@ function CourseSelect({
           {course.name}
         </NativeSelectOption>
       ))}
+      {onCreateCustom ? (
+        <NativeSelectOption value={customOptionValue}>
+          + Custom...
+        </NativeSelectOption>
+      ) : null}
     </NativeSelect>
   );
 }
