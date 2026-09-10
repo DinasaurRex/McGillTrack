@@ -775,6 +775,18 @@ const minutesToTime = (totalMinutes: number) => {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
 
+const formatDisplayTime = (time: string) => {
+  const [rawHours = '0', rawMinutes = '0'] = time.split(':');
+  const hours = Number(rawHours);
+  const minutes = Number(rawMinutes);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return time;
+
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${suffix}`;
+};
+
 const snapToFiveMinutes = (minutes: number) => Math.round(minutes / 5) * 5;
 
 const clampNumber = (value: number, min: number, max: number) =>
@@ -880,7 +892,9 @@ const addMinutesToTime = (time: string, minutesToAdd: number) => {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
 
-const scheduleBlockLayout = (block: Pick<ScheduleBlock, 'start' | 'end'>) => {
+const calendarBlockMinutes = (
+  block: Pick<ScheduleBlock | OfficeHourBlock, 'start' | 'end'>,
+) => {
   const start = Math.min(
     scheduleEndMinutes,
     Math.max(scheduleStartMinutes, timeToMinutes(block.start)),
@@ -890,6 +904,23 @@ const scheduleBlockLayout = (block: Pick<ScheduleBlock, 'start' | 'end'>) => {
     scheduleEndMinutes,
     Math.max(start + 15, rawEnd <= start ? start + 60 : rawEnd),
   );
+
+  return { start, end };
+};
+
+const formatBlockTimeRange = (
+  block: Pick<ScheduleBlock | OfficeHourBlock, 'start' | 'end'>,
+) => {
+  const { start, end } = calendarBlockMinutes(block);
+  return `${formatDisplayTime(minutesToTime(start))} - ${formatDisplayTime(
+    minutesToTime(end),
+  )}`;
+};
+
+const scheduleBlockLayout = (
+  block: Pick<ScheduleBlock | OfficeHourBlock, 'start' | 'end'>,
+) => {
+  const { start, end } = calendarBlockMinutes(block);
 
   return {
     top: ((start - scheduleStartMinutes) / 60) * scheduleHourHeight,
@@ -905,10 +936,7 @@ const formatScheduleHour = (hour: number) => {
 
 const formatDueTime = (time?: string) => {
   if (!time) return '';
-  const [hours = 0, minutes = 0] = time.split(':').map(Number);
-  const suffix = hours >= 12 ? 'PM' : 'AM';
-  const displayHour = hours % 12 || 12;
-  return `${displayHour}:${String(minutes).padStart(2, '0')} ${suffix}`;
+  return formatDisplayTime(time);
 };
 
 const cleanPdfLine = (line: string) =>
@@ -2202,7 +2230,7 @@ function StickyNoteCard({
       ref={noteRef}
       data-note-card
       data-note-id={note.id}
-      className="pixel-panel grid min-h-[180px] min-w-[260px] max-w-full resize grid-rows-[auto_1fr] overflow-auto p-4"
+      className="pixel-panel grid min-h-[180px] min-w-[260px] resize grid-rows-[auto_1fr] overflow-auto p-4"
       style={{
         width: note.width ?? noteDefaultWidth,
         height: note.height ?? noteDefaultHeight,
@@ -3087,12 +3115,19 @@ export default function Home() {
     const selectedDays = scheduleDraftDays.length
       ? scheduleDraftDays
       : [scheduleDraft.day];
+    const { start, end } = calendarBlockMinutes(scheduleDraft);
+    const normalizedScheduleDraft = {
+      ...scheduleDraft,
+      start: minutesToTime(start),
+      end: minutesToTime(end),
+    };
+
     setData((current) => ({
       ...current,
       schedule: [
         ...current.schedule,
         ...selectedDays.map((day) => ({
-          ...scheduleDraft,
+          ...normalizedScheduleDraft,
           id: makeId(),
           day,
         })),
@@ -3108,12 +3143,19 @@ export default function Home() {
     const selectedDays = officeHourDraftDays.length
       ? officeHourDraftDays
       : [officeHourDraft.day];
+    const { start, end } = calendarBlockMinutes(officeHourDraft);
+    const normalizedOfficeHourDraft = {
+      ...officeHourDraft,
+      start: minutesToTime(start),
+      end: minutesToTime(end),
+    };
+
     setData((current) => ({
       ...current,
       officeHours: [
         ...current.officeHours,
         ...selectedDays.map((day) => ({
-          ...officeHourDraft,
+          ...normalizedOfficeHourDraft,
           id: makeId(),
           day,
         })),
@@ -3859,7 +3901,7 @@ export default function Home() {
                                       height: layout.height,
                                       background: course?.color ?? '#dbeafe',
                                     }}
-                                    title={`${course?.name ?? 'Course'} · ${block.start} - ${block.end} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
+                                    title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
                                   >
                                     <div className="flex h-full min-h-0 items-center justify-center">
                                       <div className="min-w-0 max-w-full">
@@ -3875,7 +3917,7 @@ export default function Home() {
                                             compactBlock ? 'truncate' : ''
                                           }`}
                                         >
-                                          {block.start} - {block.end}
+                                          {formatBlockTimeRange(block)}
                                           {compactBlock
                                             ? ` · ${block.location || course?.room || 'Location'}`
                                             : ''}
@@ -3929,7 +3971,7 @@ export default function Home() {
                                       height: layout.height,
                                       background: course?.color ?? '#dbeafe',
                                     }}
-                                    title={`${course?.name ?? 'Course'} office hours · ${block.start} - ${block.end} · ${block.office || 'Office'} · ${block.teacher || course?.instructor || 'Professor'}`}
+                                    title={`${course?.name ?? 'Course'} office hours · ${formatBlockTimeRange(block)} · ${block.office || 'Office'} · ${block.teacher || course?.instructor || 'Professor'}`}
                                   >
                                     <div className="flex h-full min-h-0 items-center justify-center">
                                       <div className="min-w-0 max-w-full">
@@ -3944,7 +3986,7 @@ export default function Home() {
                                           {course?.name ?? 'Course'}
                                         </p>
                                         <p className="text-xs leading-tight text-blue-950/70">
-                                          {block.start} - {block.end}
+                                          {formatBlockTimeRange(block)}
                                           {compactBlock
                                             ? ` · ${block.office || 'Office'}`
                                             : ''}
@@ -3984,7 +4026,7 @@ export default function Home() {
                             >
                               <p className="truncate">{assignment.title}</p>
                               <p className="truncate font-semibold text-blue-950/70">
-                                Due {assignment.dueTime}
+                                Due {formatDueTime(assignment.dueTime)}
                               </p>
                             </div>
                           );
@@ -4689,7 +4731,7 @@ export default function Home() {
                               height: layout.height,
                               background: course?.color ?? '#dbeafe',
                             }}
-                            title={`${course?.name ?? 'Course'} · ${block.start} - ${block.end} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
+                            title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
                           >
                             <button
                               type="button"
@@ -4731,7 +4773,7 @@ export default function Home() {
                                     compactBlock ? 'truncate' : ''
                                   }`}
                                 >
-                                  {block.start} - {block.end}
+                                  {formatBlockTimeRange(block)}
                                   {compactBlock
                                     ? ` · ${block.location || course?.room || 'Location'}`
                                     : ''}
@@ -4941,7 +4983,7 @@ export default function Home() {
                               height: layout.height,
                               background: course?.color ?? '#dbeafe',
                             }}
-                            title={`${course?.name ?? 'Course'} · ${block.start} - ${block.end} · ${block.office || 'Office'} · ${block.teacher || course?.instructor || 'Professor'}`}
+                            title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.office || 'Office'} · ${block.teacher || course?.instructor || 'Professor'}`}
                           >
                             <button
                               type="button"
@@ -4989,7 +5031,7 @@ export default function Home() {
                                   {course?.name ?? 'Course'}
                                 </p>
                                 <p className="text-xs leading-tight text-blue-950/70">
-                                  {block.start} - {block.end} ·{'  '}
+                                  {formatBlockTimeRange(block)} ·{'  '}
                                   {block.office || 'Office'}
                                 </p>
                                 <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
@@ -5372,11 +5414,11 @@ export default function Home() {
               className="relative min-h-[260px] w-full"
               style={{ height: packedNotes.height }}
             >
-              {packedNotes.items.map(({ note, x, y, width, height }) => (
+              {packedNotes.items.map(({ note, x, y }) => (
                 <div
                   key={note.id}
                   className="absolute transition-[top,left] duration-150"
-                  style={{ left: x, top: y, width, height }}
+                  style={{ left: x, top: y }}
                 >
                   <StickyNoteCard
                     note={note}
@@ -5676,7 +5718,7 @@ function TodayClassList({
                 </p>
               </div>
               <span className="shrink-0 border border-blue-300 bg-white/70 px-2 py-0.5 text-xs font-black text-blue-950/70">
-                {block.start} - {block.end}
+                {formatBlockTimeRange(block)}
               </span>
             </div>
             <p className="truncate text-xs font-semibold text-blue-950/75">
