@@ -3457,9 +3457,9 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-[calc(100vh+8rem)] bg-[var(--background)] text-blue-950">
-      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 pt-4 pb-32 sm:px-6 sm:pb-40 lg:gap-5 xl:px-8">
-        <header className="pixel-panel grid gap-5 p-4 xl:grid-cols-[1fr_auto_auto] xl:items-center">
+    <main className="min-h-[calc(100vh+8rem)] overflow-x-hidden bg-[var(--background)] text-blue-950">
+      <div className="tablet-shell mx-auto flex w-full max-w-[1500px] min-w-0 flex-col gap-3 px-3 pt-4 pb-32 sm:px-5 sm:pb-40 xl:gap-5 xl:px-8">
+        <header className="pixel-panel grid min-w-0 gap-5 p-4 xl:grid-cols-[1fr_auto_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
             <div className="grid size-12 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[4px_4px_0_#dbeafe]">
               <BookOpen className="size-6" />
@@ -3612,7 +3612,7 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+        <section className="grid min-w-0 gap-3 md:grid-cols-2 lg:grid-cols-5">
           <MiniStat
             label="Assignments"
             value={`${assignmentMetrics.done}/${assignmentMetrics.total}`}
@@ -3641,7 +3641,7 @@ export default function Home() {
         </section>
 
         <Tabs value={activeTab} className="gap-4">
-          <div className="overflow-x-auto">
+          <div className="min-w-0 overflow-x-auto">
             <nav className="pixel-tabs inline-flex h-auto min-w-max items-center justify-center rounded-lg bg-blue-100 p-1 text-muted-foreground">
               {trackerTabs.map((tab) => (
                 <Link
@@ -3660,9 +3660,9 @@ export default function Home() {
 
           <TabsContent
             value="overview"
-            className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr] xl:grid-cols-[0.8fr_1.2fr]"
+            className="tablet-dashboard grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
           >
-            <section className="pixel-panel p-4">
+            <section className="pixel-panel min-w-0 p-3 xl:p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-black">Assignment Board</h2>
@@ -3678,7 +3678,7 @@ export default function Home() {
                 value={completionRate * 100}
                 className="mb-5 h-3 border border-blue-300 bg-blue-50"
               />
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {statuses.map((status) => (
                   <div
                     key={status}
@@ -3707,7 +3707,7 @@ export default function Home() {
               </div>
             </section>
 
-            <section className="pixel-panel p-4">
+            <section className="pixel-panel min-w-0 p-3 xl:p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-xl font-black">Upcoming Assignments</h2>
                 <span className="border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-950/70">
@@ -3722,7 +3722,7 @@ export default function Home() {
               />
             </section>
 
-            <section className="pixel-panel p-4 xl:col-span-2">
+            <section className="pixel-panel min-w-0 p-3 xl:p-4 lg:col-span-2">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-xl font-black">Today&apos;s Classes</h2>
                 <span className="border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-950/70">
@@ -4585,20 +4585,34 @@ export default function Home() {
 
           <TabsContent
             value="schedule"
-            className="grid gap-4 xl:grid-cols-[360px_1fr]"
+            className="grid min-w-0 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]"
           >
-            <section className="pixel-panel grid gap-3 p-4">
+            <section className="tablet-form pixel-panel grid min-w-0 gap-2.5 p-3 xl:gap-3 xl:p-4">
               <h2 className="text-xl font-black">Add Block</h2>
-              <Field label="Course">
-                <CourseSelect
-                  courses={data.courses}
-                  onCreateCustom={createCustomCourse}
-                  value={scheduleDraft.courseId}
-                  onChange={(value) =>
-                    setScheduleDraft({ ...scheduleDraft, courseId: value })
-                  }
-                />
-              </Field>
+              <div className="grid min-w-0 gap-2.5 md:grid-cols-[minmax(0,1.65fr)_minmax(220px,0.9fr)] xl:grid-cols-1 xl:gap-3">
+                <Field label="Course">
+                  <CourseSelect
+                    courses={data.courses}
+                    onCreateCustom={createCustomCourse}
+                    value={scheduleDraft.courseId}
+                    onChange={(value) =>
+                      setScheduleDraft({ ...scheduleDraft, courseId: value })
+                    }
+                  />
+                </Field>
+                <Field label="Location">
+                  <TextInput
+                    value={scheduleDraft.location}
+                    onChange={(event) =>
+                      setScheduleDraft({
+                        ...scheduleDraft,
+                        location: event.target.value,
+                      })
+                    }
+                    placeholder="Room"
+                  />
+                </Field>
+              </div>
               <div className="grid gap-1.5">
                 <p className="text-xs font-semibold uppercase text-blue-950/65">
                   Day
@@ -4640,25 +4654,13 @@ export default function Home() {
                   />
                 </Field>
               </div>
-              <Field label="Location">
-                <TextInput
-                  value={scheduleDraft.location}
-                  onChange={(event) =>
-                    setScheduleDraft({
-                      ...scheduleDraft,
-                      location: event.target.value,
-                    })
-                  }
-                  placeholder="Room"
-                />
-              </Field>
               <Button onClick={addSchedule}>
                 <Plus data-icon="inline-start" />
                 Add block
               </Button>
             </section>
 
-            <section className="pixel-panel overflow-x-auto p-4">
+            <section className="pixel-panel min-w-0 overflow-x-auto p-3 xl:p-4">
               <h2 className="mb-4 text-xl font-black">Weekly Schedule</h2>
               <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
                 <div />
@@ -4792,9 +4794,9 @@ export default function Home() {
 
           <TabsContent
             value="office-hours"
-            className="grid gap-4 xl:grid-cols-[360px_1fr]"
+            className="grid min-w-0 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]"
           >
-            <section className="pixel-panel grid gap-3 p-4">
+            <section className="tablet-form pixel-panel grid min-w-0 gap-2.5 p-3 xl:gap-3 xl:p-4">
               <h2 className="text-xl font-black">Add Office Hours</h2>
               <Field label="Course">
                 <CourseSelect
@@ -4810,47 +4812,49 @@ export default function Home() {
                   }
                 />
               </Field>
-              <Field label="Teacher">
-                <TextInput
-                  list="office-hour-teacher-options"
-                  value={officeHourDraft.teacher}
-                  onChange={(event) =>
-                    setOfficeHourDraft({
-                      ...officeHourDraft,
-                      teacher: event.target.value,
-                    })
-                  }
-                  placeholder="Instructor, TA, or other name"
-                />
-                <datalist id="office-hour-teacher-options">
-                  {selectedOfficeHourCourse?.instructor ? (
-                    <option
-                      label={selectedOfficeHourCourse.instructor}
-                      value={selectedOfficeHourCourse.instructor}
-                    >
-                      {selectedOfficeHourCourse.instructor}
+              <div className="grid min-w-0 gap-2.5 md:grid-cols-2 xl:grid-cols-1 xl:gap-3">
+                <Field label="Teacher">
+                  <TextInput
+                    list="office-hour-teacher-options"
+                    value={officeHourDraft.teacher}
+                    onChange={(event) =>
+                      setOfficeHourDraft({
+                        ...officeHourDraft,
+                        teacher: event.target.value,
+                      })
+                    }
+                    placeholder="Instructor, TA, or other name"
+                  />
+                  <datalist id="office-hour-teacher-options">
+                    {selectedOfficeHourCourse?.instructor ? (
+                      <option
+                        label={selectedOfficeHourCourse.instructor}
+                        value={selectedOfficeHourCourse.instructor}
+                      >
+                        {selectedOfficeHourCourse.instructor}
+                      </option>
+                    ) : null}
+                    <option label="TA" value="TA">
+                      TA
                     </option>
-                  ) : null}
-                  <option label="TA" value="TA">
-                    TA
-                  </option>
-                  <option label="Other" value="Other">
-                    Other
-                  </option>
-                </datalist>
-              </Field>
-              <Field label="Office">
-                <TextInput
-                  value={officeHourDraft.office}
-                  onChange={(event) =>
-                    setOfficeHourDraft({
-                      ...officeHourDraft,
-                      office: event.target.value,
-                    })
-                  }
-                  placeholder="Office, building, or Zoom link"
-                />
-              </Field>
+                    <option label="Other" value="Other">
+                      Other
+                    </option>
+                  </datalist>
+                </Field>
+                <Field label="Office">
+                  <TextInput
+                    value={officeHourDraft.office}
+                    onChange={(event) =>
+                      setOfficeHourDraft({
+                        ...officeHourDraft,
+                        office: event.target.value,
+                      })
+                    }
+                    placeholder="Office, building, or Zoom link"
+                  />
+                </Field>
+              </div>
               <div className="grid gap-1.5">
                 <p className="text-xs font-semibold uppercase text-blue-950/65">
                   Day
@@ -4910,7 +4914,7 @@ export default function Home() {
               </Button>
             </section>
 
-            <section className="pixel-panel overflow-x-auto p-4">
+            <section className="pixel-panel min-w-0 overflow-x-auto p-3 xl:p-4">
               <h2 className="mb-4 text-xl font-black">Office Hours</h2>
               <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
                 <div />
@@ -5416,9 +5420,9 @@ export default function Home() {
 
           <TabsContent
             value="hours"
-            className="grid gap-4 lg:grid-cols-[360px_1fr]"
+            className="grid min-w-0 gap-4 lg:grid-cols-[360px_minmax(0,1fr)]"
           >
-            <section className="pixel-panel grid gap-3 p-4">
+            <section className="pixel-panel grid min-w-0 gap-3 p-3 xl:p-4">
               <h2 className="text-xl font-black">Log Hours</h2>
               <Field label="Event">
                 <TextInput
@@ -5480,14 +5484,14 @@ export default function Home() {
                 Add hours
               </Button>
             </section>
-            <section className="pixel-panel p-4">
-              <div className="mb-4 flex items-center justify-between">
+            <section className="pixel-panel min-w-0 overflow-hidden p-3 xl:p-4">
+              <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
                 <h2 className="text-xl font-black">Hours Tracker</h2>
                 <span className="border-2 border-blue-300 bg-amber-50 px-3 py-1 text-sm font-black">
                   {oneDecimal(totalHours)} total
                 </span>
               </div>
-              <Table>
+              <Table className="min-w-[680px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Event</TableHead>
@@ -5605,7 +5609,7 @@ function AssignmentPreviewList({
   }
 
   return (
-    <div className="grid min-w-0 gap-3 md:grid-cols-[repeat(2,minmax(0,1fr))]">
+    <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-3">
       {assignments.map((assignment) => {
         const course = courseById.get(assignment.courseId);
         const left = daysLeft(assignment.dueDate);
@@ -5681,25 +5685,25 @@ function TodayClassList({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-3">
       {blocks.map((block) => {
         const course = courseById.get(block.courseId);
         return (
           <article
             key={block.id}
-            className="grid gap-2 border-2 border-blue-200 p-3"
+            className="grid min-w-0 gap-2 overflow-hidden border-2 border-blue-200 p-3"
             style={{ background: course?.color ?? '#dbeafe' }}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black text-blue-950">
+            <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="overflow-hidden text-sm leading-tight font-black text-blue-950 [display:-webkit-box] [overflow-wrap:anywhere] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                   {course?.name ?? 'Course'}
                 </p>
                 <p className="truncate text-xs font-semibold text-blue-950/65">
                   {course?.code || 'No code'}
                 </p>
               </div>
-              <span className="shrink-0 border border-blue-300 bg-white/70 px-2 py-0.5 text-xs font-black text-blue-950/70">
+              <span className="max-w-full shrink-0 border border-blue-300 bg-white/70 px-2 py-0.5 text-xs font-black text-blue-950/70">
                 {formatBlockTimeRange(block)}
               </span>
             </div>

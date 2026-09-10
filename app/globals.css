@@ -52,6 +52,12 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 :root {
   --background: oklch(0.965 0.035 245);
   --foreground: oklch(0.24 0.075 255);
@@ -161,6 +167,20 @@ body {
 
   [data-slot='tabs-content'][hidden] {
     display: none !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1180px) {
+  .pixel-panel {
+    box-shadow: 4px 4px 0 oklch(0.88 0.045 68);
+  }
+
+  .tablet-shell {
+    gap: 0.875rem;
+  }
+
+  .tablet-dashboard {
+    gap: 0.875rem;
   }
 }
 
