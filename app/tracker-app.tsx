@@ -8,7 +8,6 @@ import {
   BarChart3,
   BookOpen,
   CalendarDays,
-  Check,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -4081,7 +4080,7 @@ export default function Home() {
                 </Button>
               </div>
             </section>
-            <section className="pixel-panel p-4">
+            <section className="pixel-panel overflow-x-auto p-4">
               <AssignmentTable
                 assignments={data.assignments}
                 courseById={courseById}
@@ -5630,6 +5629,21 @@ function AssignmentTable({
   removeAssignment: (id: string) => void;
 }) {
   const websiteById = new Map(websites.map((website) => [website.id, website]));
+  const sortedAssignments = [...assignments].sort((first, second) => {
+    const firstDone = first.status === 'Done' || first.submitted;
+    const secondDone = second.status === 'Done' || second.submitted;
+    if (firstDone !== secondDone) return firstDone ? 1 : -1;
+
+    const firstDue = new Date(
+      `${first.dueDate || '9999-12-31'}T${first.dueTime || '23:59'}`,
+    ).getTime();
+    const secondDue = new Date(
+      `${second.dueDate || '9999-12-31'}T${second.dueTime || '23:59'}`,
+    ).getTime();
+
+    if (firstDue !== secondDue) return firstDue - secondDue;
+    return first.title.localeCompare(second.title);
+  });
 
   return (
     <Table>
@@ -5640,18 +5654,15 @@ function AssignmentTable({
           <TableHead>Links</TableHead>
           <TableHead>Type</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead>Priority</TableHead>
           <TableHead>Week</TableHead>
           <TableHead>Due</TableHead>
-          <TableHead>Time</TableHead>
-          <TableHead>Left</TableHead>
-          <TableHead>Done</TableHead>
           <TableHead />
         </TableRow>
       </TableHeader>
       <TableBody>
-        {assignments.map((assignment) => {
+        {sortedAssignments.map((assignment) => {
           const left = daysLeft(assignment.dueDate);
+          const done = assignment.status === 'Done' || assignment.submitted;
           const week = assignmentWeekLabel(
             assignment.dueDate,
             termStartDate,
@@ -5676,20 +5687,33 @@ function AssignmentTable({
 
               return first.label.localeCompare(second.label);
             });
-          const overdue =
-            left !== null &&
-            left < 0 &&
-            assignment.status !== 'Done' &&
-            !assignment.submitted;
+          const urgencyClass =
+            !done && left !== null && left <= 2
+              ? 'bg-red-50'
+              : !done && left !== null && left <= 5
+                ? 'bg-orange-50'
+                : '';
+          const urgencyTextClass =
+            !done && left !== null && left <= 2
+              ? 'text-red-700'
+              : !done && left !== null && left <= 5
+                ? 'text-orange-700'
+                : 'text-blue-950';
+          const leftLabel =
+            left === null
+              ? '-'
+              : left < 0
+                ? `${Math.abs(left)} late`
+                : `${left} days left`;
           return (
             <TableRow
               key={assignment.id}
-              className={overdue ? 'bg-orange-50' : ''}
+              className={urgencyClass}
             >
-              <TableCell>
+              <TableCell className="align-top py-2">
                 {courseById.get(assignment.courseId)?.name ?? 'Course'}
               </TableCell>
-              <TableCell className="min-w-56">
+              <TableCell className="min-w-56 align-top py-2">
                 <TextInput
                   value={assignment.title}
                   onChange={(event) =>
@@ -5698,7 +5722,7 @@ function AssignmentTable({
                   className="w-full"
                 />
               </TableCell>
-              <TableCell className="min-w-60">
+              <TableCell className="min-w-60 align-top py-2">
                 <div className="grid gap-2">
                   <NativeSelect
                     value=""
@@ -5762,7 +5786,7 @@ function AssignmentTable({
                   ) : null}
                 </div>
               </TableCell>
-              <TableCell>
+              <TableCell className="align-top py-2">
                 <NativeSelect
                   value={assignment.type}
                   onChange={(event) =>
@@ -5781,110 +5805,68 @@ function AssignmentTable({
                   ))}
                 </NativeSelect>
               </TableCell>
-              <TableCell>
-                <NativeSelect
-                  value={assignment.status}
-                  onChange={(event) =>
-                    updateAssignment(
-                      assignment.id,
-                      'status',
-                      event.target.value as Status,
-                    )
-                  }
-                  className="w-36"
-                >
-                  {statuses.map((status) => (
-                    <NativeSelectOption key={status} value={status}>
-                      {status}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
+              <TableCell className="min-w-36 align-top py-2">
+                <div className="grid gap-1.5">
+                  <NativeSelect
+                    value={assignment.status}
+                    onChange={(event) => {
+                      const nextStatus = event.target.value as Status;
+                      updateAssignment(assignment.id, 'status', nextStatus);
+                      updateAssignment(
+                        assignment.id,
+                        'submitted',
+                        nextStatus === 'Done',
+                      );
+                    }}
+                    className="w-36"
+                  >
+                    {statuses.map((status) => (
+                      <NativeSelectOption key={status} value={status}>
+                        {status}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                  <span
+                    className={`text-sm leading-tight font-black ${urgencyTextClass}`}
+                  >
+                    {leftLabel}
+                  </span>
+                </div>
               </TableCell>
-              <TableCell>
-                <NativeSelect
-                  value={assignment.priority}
-                  onChange={(event) =>
-                    updateAssignment(
-                      assignment.id,
-                      'priority',
-                      event.target.value as Priority,
-                    )
-                  }
-                  className="w-32"
-                >
-                  {priorities.map((priority) => (
-                    <NativeSelectOption key={priority} value={priority}>
-                      {priority}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </TableCell>
-              <TableCell>
+              <TableCell className="align-top py-2">
                 <span className="inline-flex min-w-28 justify-center border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-black text-blue-950/75">
                   {week}
                 </span>
               </TableCell>
-              <TableCell>
-                <TextInput
-                  type="date"
-                  value={assignment.dueDate}
-                  onChange={(event) =>
-                    updateAssignment(
-                      assignment.id,
-                      'dueDate',
-                      event.target.value,
-                    )
-                  }
-                  className="w-40"
-                />
-              </TableCell>
-              <TableCell>
-                <TextInput
-                  type="time"
-                  value={assignment.dueTime ?? ''}
-                  onChange={(event) =>
-                    updateAssignment(
-                      assignment.id,
-                      'dueTime',
-                      event.target.value,
-                    )
-                  }
-                  className="w-32"
-                />
-              </TableCell>
-              <TableCell
-                className={`font-black ${overdue ? 'text-orange-700' : ''}`}
-              >
-                {left === null
-                  ? '-'
-                  : left < 0
-                    ? `${Math.abs(left)} late`
-                    : `${left} days`}
-              </TableCell>
-              <TableCell>
-                <label className="flex items-center gap-2 text-sm font-semibold">
-                  <input
-                    type="checkbox"
-                    checked={
-                      assignment.submitted || assignment.status === 'Done'
+              <TableCell className="min-w-40 align-top py-2">
+                <div className="grid gap-1">
+                  <TextInput
+                    type="date"
+                    value={assignment.dueDate}
+                    onChange={(event) =>
+                      updateAssignment(
+                        assignment.id,
+                        'dueDate',
+                        event.target.value,
+                      )
                     }
-                    onChange={(event) => {
-                      updateAssignment(
-                        assignment.id,
-                        'submitted',
-                        event.target.checked,
-                      );
-                      updateAssignment(
-                        assignment.id,
-                        'status',
-                        event.target.checked ? 'Done' : 'In Progress',
-                      );
-                    }}
+                    className="w-40"
                   />
-                  <Check className="size-4" />
-                </label>
+                  <TextInput
+                    type="time"
+                    value={assignment.dueTime ?? ''}
+                    onChange={(event) =>
+                      updateAssignment(
+                        assignment.id,
+                        'dueTime',
+                        event.target.value,
+                      )
+                    }
+                    className="w-40"
+                  />
+                </div>
               </TableCell>
-              <TableCell>
+              <TableCell className="align-top py-2">
                 <Button
                   variant="destructive"
                   size="icon"
