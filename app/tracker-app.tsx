@@ -3458,48 +3458,54 @@ export default function Home() {
 
   return (
     <main className="min-h-[calc(100vh+8rem)] overflow-x-hidden bg-[var(--background)] text-blue-950">
-      <div className="tablet-shell mx-auto flex w-full max-w-[1500px] min-w-0 flex-col gap-3 px-3 pt-4 pb-32 sm:px-5 sm:pb-40 xl:gap-5 xl:px-8">
-        <header className="pixel-panel grid min-w-0 gap-5 p-4 xl:grid-cols-[1fr_auto_auto] xl:items-center">
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="grid size-12 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[4px_4px_0_#dbeafe]">
-              <BookOpen className="size-6" />
+      <div className="tablet-shell mx-auto flex w-full max-w-[1500px] min-w-0 flex-col gap-3 px-2 pt-3 pb-32 sm:px-5 sm:pt-4 sm:pb-40 xl:gap-5 xl:px-8">
+        <header className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-5 sm:p-4 xl:grid-cols-[1fr_auto_auto] xl:items-center">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <div className="grid size-10 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[3px_3px_0_#dbeafe] sm:size-12 sm:shadow-[4px_4px_0_#dbeafe]">
+              <BookOpen className="size-5 sm:size-6" />
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase text-blue-950/70">
                 {dateLabel}
               </p>
-              <h1 className="text-3xl font-black tracking-normal sm:text-4xl">
+              <h1 className="truncate text-2xl font-black tracking-normal sm:text-4xl">
                 McGillTrack
               </h1>
             </div>
           </div>
-          <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
-            <Button variant="outline" onClick={exportData}>
+          <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-start xl:justify-end">
+            <Button className="w-full sm:w-auto" variant="outline" onClick={exportData}>
               <Download data-icon="inline-start" />
               Export
             </Button>
             <Button
+              className="w-full sm:w-auto"
               variant="outline"
               onClick={() => schedulePdfInputRef.current?.click()}
             >
               <Upload data-icon="inline-start" />
-              Import Schedule PDF
+              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">Import Schedule PDF</span>
             </Button>
             <Button
+              className="w-full sm:w-auto"
               variant="outline"
               onClick={() => excelInputRef.current?.click()}
             >
               <Upload data-icon="inline-start" />
-              Import Excel
+              <span className="sm:hidden">Excel</span>
+              <span className="hidden sm:inline">Import Excel</span>
             </Button>
             <Button
+              className="w-full sm:w-auto"
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload data-icon="inline-start" />
-              Import Data
+              <span className="sm:hidden">Data</span>
+              <span className="hidden sm:inline">Import Data</span>
             </Button>
-            <Button variant="secondary" onClick={resetTemplate}>
+            <Button className="col-span-2 w-full sm:col-span-1 sm:w-auto" variant="secondary" onClick={resetTemplate}>
               <RotateCcw data-icon="inline-start" />
               Reset
             </Button>
@@ -3525,7 +3531,7 @@ export default function Home() {
               onChange={importData}
             />
           </div>
-          <div className="grid min-h-[112px] w-full gap-2 border-2 border-blue-300 bg-white/75 p-3 shadow-[3px_3px_0_#bfdbfe] xl:w-[420px] xl:max-w-[420px]">
+          <div className="grid w-full gap-2 border-2 border-blue-300 bg-white/75 p-3 shadow-[3px_3px_0_#bfdbfe] sm:min-h-[112px] xl:w-[420px] xl:max-w-[420px]">
             <div className="flex items-center justify-between gap-3">
               <p className="truncate text-xs font-black uppercase text-blue-950">
                 {user?.email ?? 'Cloud Account'}
@@ -3612,7 +3618,7 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="grid min-w-0 gap-3 md:grid-cols-2 lg:grid-cols-5">
+        <section className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 md:grid-cols-2 lg:grid-cols-5">
           <MiniStat
             label="Assignments"
             value={`${assignmentMetrics.done}/${assignmentMetrics.total}`}
@@ -3678,7 +3684,7 @@ export default function Home() {
                 value={completionRate * 100}
                 className="mb-5 h-3 border border-blue-300 bg-blue-50"
               />
-              <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
                 {statuses.map((status) => (
                   <div
                     key={status}
@@ -3734,7 +3740,7 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="weekly" className="grid gap-4">
-            <section className="pixel-panel overflow-x-auto p-4">
+            <section className="pixel-panel min-w-0 overflow-x-auto p-3 sm:p-4">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-black">Weekly</h2>
@@ -3805,7 +3811,18 @@ export default function Home() {
                   Assignments
                 </label>
               </div>
-              <div className="min-w-[900px]">
+              <WeeklyMobileAgenda
+                days={days}
+                weeklyDates={weeklyDates}
+                assignments={weeklyAssignments}
+                schedule={data.schedule}
+                officeHours={data.officeHours}
+                courseById={courseById}
+                showClasses={weeklyShowClasses}
+                showOfficeHours={weeklyShowOfficeHours}
+                showAssignments={weeklyShowAssignments}
+              />
+              <div className="hidden min-w-[900px] md:block">
                 <div className="grid grid-cols-[64px_repeat(5,minmax(140px,1fr))] gap-0">
                   <div />
                   {days.map((day, index) => (
@@ -4214,89 +4231,117 @@ export default function Home() {
                 </Button>
               </div>
             </section>
-            <section className="pixel-panel overflow-x-auto p-4">
-              <AssignmentTable
-                assignments={data.assignments}
-                courseById={courseById}
-                websites={data.websites}
-                termStartDate={data.termStartDate}
-                termEndDate={data.termEndDate}
-                updateAssignment={updateAssignment}
-                removeAssignment={(id) => removeItem('assignments', id)}
-              />
+            <section className="pixel-panel min-w-0 overflow-hidden p-3 sm:p-4">
+              <div className="md:hidden">
+                <AssignmentMobileCards
+                  assignments={data.assignments}
+                  courseById={courseById}
+                  websites={data.websites}
+                  termStartDate={data.termStartDate}
+                  termEndDate={data.termEndDate}
+                  updateAssignment={updateAssignment}
+                  removeAssignment={(id) => removeItem('assignments', id)}
+                />
+              </div>
+              <div className="hidden md:block">
+                <AssignmentTable
+                  assignments={data.assignments}
+                  courseById={courseById}
+                  websites={data.websites}
+                  termStartDate={data.termStartDate}
+                  termEndDate={data.termEndDate}
+                  updateAssignment={updateAssignment}
+                  removeAssignment={(id) => removeItem('assignments', id)}
+                />
+              </div>
             </section>
           </TabsContent>
 
           <TabsContent
             value="courses"
-            className="grid gap-4 xl:grid-cols-[360px_1fr]"
+            className="grid min-w-0 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]"
           >
-            <section className="pixel-panel grid gap-3 p-4">
+            <section className="tablet-form pixel-panel grid min-w-0 gap-2.5 p-3 xl:gap-3 xl:p-4">
               <h2 className="text-xl font-black">Add Course</h2>
-              <Field label="Name">
-                <TextInput
-                  value={courseDraft.name}
-                  onChange={(event) =>
-                    setCourseDraft({ ...courseDraft, name: event.target.value })
-                  }
-                  placeholder="Course name"
-                />
-              </Field>
-              <Field label="Code">
-                <TextInput
-                  value={courseDraft.code}
-                  onChange={(event) =>
-                    setCourseDraft({ ...courseDraft, code: event.target.value })
-                  }
-                  placeholder="COUR 101"
-                />
-              </Field>
-              <Field label="Room">
-                <TextInput
-                  value={courseDraft.room}
-                  onChange={(event) =>
-                    setCourseDraft({ ...courseDraft, room: event.target.value })
-                  }
-                  placeholder="Room"
-                />
-              </Field>
-              <Field label="Instructor">
-                <TextInput
-                  value={courseDraft.instructor}
-                  onChange={(event) =>
-                    setCourseDraft({
-                      ...courseDraft,
-                      instructor: event.target.value,
-                    })
-                  }
-                  placeholder="Name"
-                />
-              </Field>
-              <Field label="Email">
-                <TextInput
-                  type="email"
-                  value={courseDraft.email ?? ''}
-                  onChange={(event) =>
-                    setCourseDraft({
-                      ...courseDraft,
-                      email: event.target.value,
-                    })
-                  }
-                  placeholder="teacher@email.com"
-                />
-              </Field>
-              <Field label="Section">
-                <TextInput
-                  value={courseDraft.section ?? ''}
-                  onChange={(event) =>
-                    setCourseDraft({
-                      ...courseDraft,
-                      section: event.target.value,
-                    })
-                  }
-                  placeholder="001"
-                />
-              </Field>
+              <div className="grid min-w-0 gap-2.5 md:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.8fr)] xl:grid-cols-1 xl:gap-3">
+                <Field label="Name">
+                  <TextInput
+                    value={courseDraft.name}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        name: event.target.value,
+                      })
+                    }
+                    placeholder="Course name"
+                  />
+                </Field>
+                <Field label="Code">
+                  <TextInput
+                    value={courseDraft.code}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        code: event.target.value,
+                      })
+                    }
+                    placeholder="COUR 101"
+                  />
+                </Field>
+              </div>
+              <div className="grid min-w-0 gap-2.5 md:grid-cols-[minmax(0,1.4fr)_minmax(160px,0.8fr)] xl:grid-cols-1 xl:gap-3">
+                <Field label="Room">
+                  <TextInput
+                    value={courseDraft.room}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        room: event.target.value,
+                      })
+                    }
+                    placeholder="Room"
+                  />
+                </Field>
+                <Field label="Section">
+                  <TextInput
+                    value={courseDraft.section ?? ''}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        section: event.target.value,
+                      })
+                    }
+                    placeholder="001"
+                  />
+                </Field>
+              </div>
+              <div className="grid min-w-0 gap-2.5 md:grid-cols-2 xl:grid-cols-1 xl:gap-3">
+                <Field label="Instructor">
+                  <TextInput
+                    value={courseDraft.instructor}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        instructor: event.target.value,
+                      })
+                    }
+                    placeholder="Name"
+                  />
+                </Field>
+                <Field label="Email">
+                  <TextInput
+                    type="email"
+                    value={courseDraft.email ?? ''}
+                    onChange={(event) =>
+                      setCourseDraft({
+                        ...courseDraft,
+                        email: event.target.value,
+                      })
+                    }
+                    placeholder="teacher@email.com"
+                  />
+                </Field>
+              </div>
               <CourseColorControls
                 value={courseDraft.color}
                 label="Use course color"
@@ -4308,8 +4353,16 @@ export default function Home() {
               </Button>
             </section>
 
-            <section className="pixel-panel overflow-x-auto p-4">
-              <Table className="min-w-[960px]">
+            <section className="pixel-panel min-w-0 overflow-hidden p-3 xl:p-4">
+              <div className="md:hidden">
+                <CourseMobileCards
+                  courses={data.courses}
+                  updateCourse={updateCourse}
+                  removeCourse={(id) => removeItem('courses', id)}
+                />
+              </div>
+              <div className="hidden min-w-0 overflow-x-auto md:block">
+                <Table className="min-w-[900px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Course</TableHead>
@@ -4425,7 +4478,8 @@ export default function Home() {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
+                </Table>
+              </div>
             </section>
           </TabsContent>
 
@@ -4660,8 +4714,15 @@ export default function Home() {
               </Button>
             </section>
 
-            <section className="pixel-panel min-w-0 overflow-x-auto p-3 xl:p-4">
+            <section className="pixel-panel min-w-0 overflow-hidden p-3 xl:p-4">
               <h2 className="mb-4 text-xl font-black">Weekly Schedule</h2>
+              <ScheduleMobileList
+                days={days}
+                blocks={data.schedule}
+                courseById={courseById}
+                onDelete={(id) => removeItem('schedule', id)}
+              />
+              <div className="hidden min-w-0 overflow-x-auto md:block">
               <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
                 <div />
                 {days.map((day) => (
@@ -4789,6 +4850,7 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+              </div>
             </section>
           </TabsContent>
 
@@ -4914,8 +4976,15 @@ export default function Home() {
               </Button>
             </section>
 
-            <section className="pixel-panel min-w-0 overflow-x-auto p-3 xl:p-4">
+            <section className="pixel-panel min-w-0 overflow-hidden p-3 xl:p-4">
               <h2 className="mb-4 text-xl font-black">Office Hours</h2>
+              <OfficeHoursMobileList
+                days={days}
+                blocks={data.officeHours}
+                courseById={courseById}
+                onDelete={(id) => removeItem('officeHours', id)}
+              />
+              <div className="hidden min-w-0 overflow-x-auto md:block">
               <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
                 <div />
                 {days.map((day) => (
@@ -5046,6 +5115,7 @@ export default function Home() {
                       })}
                   </div>
                 ))}
+              </div>
               </div>
             </section>
           </TabsContent>
