@@ -4285,54 +4285,16 @@ export default function Home() {
                   placeholder="teacher@email.com"
                 />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Section">
-                  <TextInput
-                    value={courseDraft.section ?? ''}
-                    onChange={(event) =>
-                      setCourseDraft({
-                        ...courseDraft,
-                        section: event.target.value,
-                      })
-                    }
-                    placeholder="001"
-                  />
-                </Field>
-                <Field label="Extension">
-                  <TextInput
-                    value={courseDraft.extension ?? ''}
-                    onChange={(event) =>
-                      setCourseDraft({
-                        ...courseDraft,
-                        extension: event.target.value,
-                      })
-                    }
-                    placeholder="Ext."
-                  />
-                </Field>
-              </div>
-              <Field label="Teams">
+              <Field label="Section">
                 <TextInput
-                  value={courseDraft.teams ?? ''}
+                  value={courseDraft.section ?? ''}
                   onChange={(event) =>
                     setCourseDraft({
                       ...courseDraft,
-                      teams: event.target.value,
+                      section: event.target.value,
                     })
                   }
-                  placeholder="Teams channel"
-                />
-              </Field>
-              <Field label="Weekly">
-                <TextInput
-                  value={courseDraft.weeklyPonderation ?? ''}
-                  onChange={(event) =>
-                    setCourseDraft({
-                      ...courseDraft,
-                      weeklyPonderation: event.target.value,
-                    })
-                  }
-                  placeholder="Lecture / lab split"
+                  placeholder="001"
                 />
               </Field>
               <CourseColorControls
@@ -4347,7 +4309,7 @@ export default function Home() {
             </section>
 
             <section className="pixel-panel overflow-x-auto p-4">
-              <Table className="min-w-[1280px]">
+              <Table className="min-w-[960px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Course</TableHead>
@@ -4356,10 +4318,7 @@ export default function Home() {
                     <TableHead>Room</TableHead>
                     <TableHead>Instructor</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Ext.</TableHead>
                     <TableHead>Section</TableHead>
-                    <TableHead>Teams</TableHead>
-                    <TableHead>Weekly</TableHead>
                     <TableHead>Credits</TableHead>
                     <TableHead />
                   </TableRow>
@@ -4428,19 +4387,6 @@ export default function Home() {
                       </TableCell>
                       <TableCell>
                         <TextInput
-                          value={course.extension ?? ''}
-                          onChange={(event) =>
-                            updateCourse(
-                              course.id,
-                              'extension',
-                              event.target.value,
-                            )
-                          }
-                          className="w-24"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
                           value={course.section ?? ''}
                           onChange={(event) =>
                             updateCourse(
@@ -4450,28 +4396,6 @@ export default function Home() {
                             )
                           }
                           className="w-28"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          value={course.teams ?? ''}
-                          onChange={(event) =>
-                            updateCourse(course.id, 'teams', event.target.value)
-                          }
-                          className="w-44"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          value={course.weeklyPonderation ?? ''}
-                          onChange={(event) =>
-                            updateCourse(
-                              course.id,
-                              'weeklyPonderation',
-                              event.target.value,
-                            )
-                          }
-                          className="w-40"
                         />
                       </TableCell>
                       <TableCell>
