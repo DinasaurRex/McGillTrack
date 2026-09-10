@@ -928,6 +928,38 @@ const scheduleBlockLayout = (
   };
 };
 
+const blockContainsTime = (
+  block: Pick<ScheduleBlock, 'start' | 'end'>,
+  time: string,
+) => {
+  const { start, end } = calendarBlockMinutes(block);
+  const minutes = timeToMinutes(time);
+  return minutes >= start - 10 && minutes <= end;
+};
+
+const assignmentAttachesToBlock = (
+  assignment: Assignment,
+  date: string,
+  block: ScheduleBlock,
+  dayBlocks: ScheduleBlock[],
+) => {
+  if (assignment.dueDate !== date || assignment.courseId !== block.courseId) {
+    return false;
+  }
+
+  const courseBlocks = dayBlocks
+    .filter((item) => item.courseId === assignment.courseId)
+    .sort((first, second) => first.start.localeCompare(second.start));
+
+  if (!assignment.dueTime) return block.id === courseBlocks[0]?.id;
+
+  const timedBlock = courseBlocks.find((item) =>
+    blockContainsTime(item, assignment.dueTime ?? ''),
+  );
+
+  return block.id === (timedBlock?.id ?? courseBlocks[0]?.id);
+};
+
 const formatScheduleHour = (hour: number) => {
   if (hour === 12) return '12 pm';
   if (hour > 12) return `${hour - 12} pm`;
@@ -3861,11 +3893,31 @@ export default function Home() {
                   </div>
                   {days.map((day, dayIndex) => {
                     const date = weeklyDates[dayIndex];
+                    const dayScheduleBlocks = data.schedule
+                      .filter((block) => block.day === day)
+                      .sort((a, b) => a.start.localeCompare(b.start));
                     const timedAssignments = weeklyAssignments.filter(
-                      (assignment) =>
-                        weeklyShowAssignments &&
-                        Boolean(assignment.dueTime) &&
-                        dayFromIsoDate(assignment.dueDate) === day,
+                      (assignment) => {
+                        if (
+                          !weeklyShowAssignments ||
+                          !assignment.dueTime ||
+                          assignment.dueDate !== date
+                        ) {
+                          return false;
+                        }
+
+                        return !(
+                          weeklyShowClasses &&
+                          dayScheduleBlocks.some((block) =>
+                            assignmentAttachesToBlock(
+                              assignment,
+                              date,
+                              block,
+                              dayScheduleBlocks,
+                            ),
+                          )
+                        );
+                      },
                     );
 
                     return (
@@ -3875,9 +3927,7 @@ export default function Home() {
                         style={{ height: scheduleGridHeight }}
                       >
                         {weeklyShowClasses
-                          ? data.schedule
-                              .filter((block) => block.day === day)
-                              .sort((a, b) => a.start.localeCompare(b.start))
+                          ? dayScheduleBlocks
                               .map((block) => {
                                 const course = courseById.get(block.courseId);
                                 const layout = scheduleBlockLayout(block);
@@ -3886,9 +3936,12 @@ export default function Home() {
                                   weeklyAssignments.filter(
                                     (assignment) =>
                                       weeklyShowAssignments &&
-                                      !assignment.dueTime &&
-                                      assignment.dueDate === date &&
-                                      assignment.courseId === block.courseId,
+                                      assignmentAttachesToBlock(
+                                        assignment,
+                                        date,
+                                        block,
+                                        dayScheduleBlocks,
+                                      ),
                                   );
                                 return (
                                   <div
@@ -3934,18 +3987,23 @@ export default function Home() {
                                             {block.type}
                                           </p>
                                         ) : null}
+                                        {blockAssignments
+                                          .slice(0, compactBlock ? 1 : 2)
+                                          .map((assignment) => (
+                                            <p
+                                              key={assignment.id}
+                                              className="mt-1 truncate border border-blue-300 bg-white/70 px-1 text-xs font-black leading-tight text-blue-950"
+                                            >
+                                              {assignment.type}:{' '}
+                                              {assignment.title}
+                                            </p>
+                                          ))}
                                         {!compactBlock &&
-                                          blockAssignments
-                                            .slice(0, 2)
-                                            .map((assignment) => (
-                                              <p
-                                                key={assignment.id}
-                                                className="mt-1 truncate border border-blue-300 bg-white/70 px-1 text-xs font-black leading-tight text-blue-950"
-                                              >
-                                                {assignment.type}:{' '}
-                                                {assignment.title}
-                                              </p>
-                                            ))}
+                                        blockAssignments.length > 2 ? (
+                                          <p className="mt-1 truncate border border-blue-200 bg-white/60 px-1 text-xs font-black leading-tight text-blue-950/65">
+                                            +{blockAssignments.length - 2} more
+                                          </p>
+                                        ) : null}
                                       </div>
                                     </div>
                                   </div>
