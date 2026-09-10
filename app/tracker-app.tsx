@@ -2286,6 +2286,7 @@ export default function Home() {
     startOfWeekIso(initialTemplateDate),
   );
   const [weeklyShowClasses, setWeeklyShowClasses] = useState(true);
+  const [weeklyShowOfficeHours, setWeeklyShowOfficeHours] = useState(false);
   const [weeklyShowAssignments, setWeeklyShowAssignments] = useState(true);
   const [resizingScheduleBlockId, setResizingScheduleBlockId] = useState('');
   const [notesBoardWidth, setNotesBoardWidth] = useState(0);
@@ -3679,6 +3680,16 @@ export default function Home() {
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
+                    checked={weeklyShowOfficeHours}
+                    onChange={(event) =>
+                      setWeeklyShowOfficeHours(event.target.checked)
+                    }
+                  />
+                  Office Hours
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
                     checked={weeklyShowAssignments}
                     onChange={(event) =>
                       setWeeklyShowAssignments(event.target.checked)
@@ -3860,6 +3871,59 @@ export default function Home() {
                                                 {assignment.title}
                                               </p>
                                             ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                          : null}
+                        {weeklyShowOfficeHours
+                          ? data.officeHours
+                              .filter((block) => block.day === day)
+                              .sort((a, b) => a.start.localeCompare(b.start))
+                              .map((block) => {
+                                const course = courseById.get(block.courseId);
+                                const layout = scheduleBlockLayout(block);
+                                const compactBlock = layout.height < 64;
+                                return (
+                                  <div
+                                    key={`office-${block.id}`}
+                                    className={`absolute right-2 left-6 overflow-hidden border-2 border-blue-300 px-2 text-center shadow-[3px_3px_0_rgba(251,191,36,0.35)] ${
+                                      compactBlock ? 'py-1' : 'py-1.5'
+                                    }`}
+                                    style={{
+                                      top: layout.top,
+                                      height: layout.height,
+                                      background: course?.color ?? '#dbeafe',
+                                    }}
+                                    title={`${course?.name ?? 'Course'} office hours · ${block.start} - ${block.end} · ${block.office || 'Office'} · ${block.teacher || course?.instructor || 'Professor'}`}
+                                  >
+                                    <div className="flex h-full min-h-0 items-center justify-center">
+                                      <div className="min-w-0 max-w-full">
+                                        <p
+                                          className={`truncate font-black leading-tight ${
+                                            compactBlock ? 'text-xs' : 'text-sm'
+                                          }`}
+                                        >
+                                          Office Hours
+                                        </p>
+                                        <p className="truncate text-xs font-semibold leading-tight text-blue-950/75">
+                                          {course?.name ?? 'Course'}
+                                        </p>
+                                        <p className="text-xs leading-tight text-blue-950/70">
+                                          {block.start} - {block.end}
+                                          {compactBlock
+                                            ? ` · ${block.office || 'Office'}`
+                                            : ''}
+                                        </p>
+                                        {!compactBlock ? (
+                                          <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                            {block.office || 'Office'} ·{' '}
+                                            {block.teacher ||
+                                              course?.instructor ||
+                                              'Professor'}
+                                          </p>
+                                        ) : null}
                                       </div>
                                     </div>
                                   </div>
