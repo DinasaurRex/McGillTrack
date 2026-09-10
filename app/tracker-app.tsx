@@ -781,6 +781,93 @@ const snapToFiveMinutes = (minutes: number) => Math.round(minutes / 5) * 5;
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+type PackedNoteLayout = {
+  note: NoteEntry;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+const noteLayoutGap = 16;
+const noteMinWidth = 260;
+const noteMaxWidth = 720;
+const noteMinHeight = 180;
+const noteMaxHeight = 620;
+const noteDefaultWidth = 360;
+const noteDefaultHeight = 260;
+
+const noteRectsOverlap = (
+  first: Omit<PackedNoteLayout, 'note'>,
+  second: Omit<PackedNoteLayout, 'note'>,
+) =>
+  first.x < second.x + second.width + noteLayoutGap &&
+  first.x + first.width + noteLayoutGap > second.x &&
+  first.y < second.y + second.height + noteLayoutGap &&
+  first.y + first.height + noteLayoutGap > second.y;
+
+const packNoteLayouts = (notes: NoteEntry[], containerWidth: number) => {
+  const availableWidth = Math.max(containerWidth, noteMinWidth);
+  const placed: PackedNoteLayout[] = [];
+
+  notes.forEach((note) => {
+    const width = clampNumber(
+      Math.round(note.width ?? noteDefaultWidth),
+      noteMinWidth,
+      Math.min(noteMaxWidth, availableWidth),
+    );
+    const height = clampNumber(
+      Math.round(note.height ?? noteDefaultHeight),
+      noteMinHeight,
+      noteMaxHeight,
+    );
+    const candidateXs = new Set([0]);
+
+    placed.forEach((layout) => {
+      candidateXs.add(layout.x);
+      const rightEdge = layout.x + layout.width + noteLayoutGap;
+      if (rightEdge + width <= availableWidth) candidateXs.add(rightEdge);
+    });
+
+    const xPositions = [...candidateXs]
+      .filter((x) => x >= 0 && x + width <= availableWidth)
+      .sort((first, second) => first - second);
+    let bestX = 0;
+    let bestY = 0;
+
+    xPositions.forEach((x) => {
+      let y = 0;
+      let blockers = placed.filter((layout) =>
+        noteRectsOverlap({ x, y, width, height }, layout),
+      );
+
+      while (blockers.length > 0) {
+        y = Math.max(
+          ...blockers.map((layout) => layout.y + layout.height + noteLayoutGap),
+        );
+        blockers = placed.filter((layout) =>
+          noteRectsOverlap({ x, y, width, height }, layout),
+        );
+      }
+
+      if (placed.length === 0 || y < bestY || (y === bestY && x < bestX)) {
+        bestX = x;
+        bestY = y;
+      }
+    });
+
+    placed.push({ note, x: bestX, y: bestY, width, height });
+  });
+
+  return {
+    items: placed,
+    height: Math.max(
+      noteDefaultHeight,
+      ...placed.map((layout) => layout.y + layout.height),
+    ),
+  };
+};
+
 const addMinutesToTime = (time: string, minutesToAdd: number) => {
   const total = timeToMinutes(time) + minutesToAdd;
   const hours = Math.floor(total / 60) % 24;
@@ -2180,6 +2267,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const schedulePdfInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
+  const notesBoardRef = useRef<HTMLElement | null>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
   const dataRef = useRef(defaultData);
   const userRef = useRef<User | null>(null);
@@ -2200,6 +2288,7 @@ export default function Home() {
   const [weeklyShowClasses, setWeeklyShowClasses] = useState(true);
   const [weeklyShowAssignments, setWeeklyShowAssignments] = useState(true);
   const [resizingScheduleBlockId, setResizingScheduleBlockId] = useState('');
+  const [notesBoardWidth, setNotesBoardWidth] = useState(0);
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
   const [todayDay, setTodayDay] = useState('Monday');
@@ -2252,6 +2341,27 @@ export default function Home() {
     blankHomeworkItem(defaultData.courses[0].id),
   );
   const [todoDraft, setTodoDraft] = useState<TodoItem>(blankTodoItem());
+
+  useEffect(() => {
+    const element = notesBoardRef.current;
+    if (!element) return;
+
+    const updateWidth = () => {
+      setNotesBoardWidth(Math.floor(element.clientWidth));
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [activeTab]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -2605,6 +2715,14 @@ export default function Home() {
           !assignment.submitted,
       ),
     [data.assignments, weeklyDateSet],
+  );
+  const sortedNotes = useMemo(
+    () => [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)),
+    [data.notes],
+  );
+  const packedNotes = useMemo(
+    () => packNoteLayouts(sortedNotes, notesBoardWidth),
+    [notesBoardWidth, sortedNotes],
   );
   const cloudStatusLabel = !supabaseConfigured
     ? 'setup'
@@ -5099,19 +5217,26 @@ export default function Home() {
                 Add note
               </Button>
             </section>
-            <section className="flex flex-wrap items-start gap-4">
-              {[...data.notes]
-                .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-                .map((note) => (
+            <section
+              ref={notesBoardRef}
+              className="relative min-h-[260px]"
+              style={{ height: packedNotes.height }}
+            >
+              {packedNotes.items.map(({ note, x, y }) => (
+                <div
+                  key={note.id}
+                  className="absolute transition-[top,left] duration-150"
+                  style={{ left: x, top: y }}
+                >
                   <StickyNoteCard
-                    key={note.id}
                     note={note}
                     courseName={courseById.get(note.courseId)?.name ?? 'General'}
                     onResize={saveNoteSize}
                     onUpdate={updateNote}
                     onDelete={(id) => removeItem('notes', id)}
                   />
-                ))}
+                </div>
+              ))}
             </section>
           </TabsContent>
 
