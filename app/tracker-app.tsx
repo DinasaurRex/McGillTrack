@@ -88,6 +88,7 @@ type Assignment = {
   submission: string;
   partner: string;
   notes: string;
+  linkIds: string[];
 };
 
 type ScheduleBlock = {
@@ -509,6 +510,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       submission: 'Course portal',
       partner: '',
       notes: '',
+      linkIds: [],
     },
     {
       id: 'assignment-2',
@@ -528,6 +530,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       submission: 'No submission needed',
       partner: '',
       notes: '',
+      linkIds: [],
     },
   ],
   schedule: [
@@ -633,6 +636,7 @@ const blankAssignment = (courseId: string): Assignment => ({
   submission: '',
   partner: '',
   notes: '',
+  linkIds: [],
 });
 
 const blankSchedule = (courseId: string): ScheduleBlock => ({
@@ -1693,6 +1697,7 @@ const readExcelAssignments = (workbook: ExcelWorkbook, courses: Course[]) => {
       submission: excelText(sheet, 16, row),
       partner: excelText(sheet, 8, row),
       notes: excelText(sheet, 17, row),
+      linkIds: [],
     });
   }
 
@@ -1825,6 +1830,7 @@ const normalizeAssignments = (
   assignments.map((assignment) => ({
     ...assignment,
     dueTime: assignment.dueTime ?? '',
+    linkIds: Array.isArray(assignment.linkIds) ? assignment.linkIds : [],
   }));
 
 const normalizeSchedule = (schedule = defaultData.schedule): ScheduleBlock[] =>
@@ -3897,6 +3903,7 @@ export default function Home() {
               <AssignmentTable
                 assignments={data.assignments}
                 courseById={courseById}
+                websites={data.websites}
                 termStartDate={data.termStartDate}
                 termEndDate={data.termEndDate}
                 updateAssignment={updateAssignment}
@@ -5415,6 +5422,7 @@ function TodayClassList({
 function AssignmentTable({
   assignments,
   courseById,
+  websites,
   termStartDate,
   termEndDate,
   updateAssignment,
@@ -5422,6 +5430,7 @@ function AssignmentTable({
 }: {
   assignments: Assignment[];
   courseById: Map<string, Course>;
+  websites: WebsiteEntry[];
   termStartDate: string;
   termEndDate: string;
   updateAssignment: <K extends keyof Assignment>(
@@ -5431,12 +5440,15 @@ function AssignmentTable({
   ) => void;
   removeAssignment: (id: string) => void;
 }) {
+  const websiteById = new Map(websites.map((website) => [website.id, website]));
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Course</TableHead>
           <TableHead>Assignment</TableHead>
+          <TableHead>Links</TableHead>
           <TableHead>Type</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Priority</TableHead>
@@ -5456,6 +5468,25 @@ function AssignmentTable({
             termStartDate,
             termEndDate,
           );
+          const linkIds = assignment.linkIds ?? [];
+          const attachedWebsites = linkIds
+            .map((id) => websiteById.get(id))
+            .filter((website): website is WebsiteEntry => Boolean(website));
+          const availableWebsites = websites
+            .filter(
+              (website) => website.url.trim() && !linkIds.includes(website.id),
+            )
+            .sort((first, second) => {
+              const firstMatchesCourse =
+                first.courseId === assignment.courseId ? 0 : 1;
+              const secondMatchesCourse =
+                second.courseId === assignment.courseId ? 0 : 1;
+              if (firstMatchesCourse !== secondMatchesCourse) {
+                return firstMatchesCourse - secondMatchesCourse;
+              }
+
+              return first.label.localeCompare(second.label);
+            });
           const overdue =
             left !== null &&
             left < 0 &&
@@ -5477,6 +5508,70 @@ function AssignmentTable({
                   }
                   className="w-full"
                 />
+              </TableCell>
+              <TableCell className="min-w-60">
+                <div className="grid gap-2">
+                  <NativeSelect
+                    value=""
+                    onChange={(event) => {
+                      const websiteId = event.target.value;
+                      if (!websiteId) return;
+
+                      updateAssignment(assignment.id, 'linkIds', [
+                        ...linkIds,
+                        websiteId,
+                      ]);
+                    }}
+                    className="w-full"
+                  >
+                    <NativeSelectOption value="">
+                      Attach saved link...
+                    </NativeSelectOption>
+                    {availableWebsites.map((website) => {
+                      const courseName =
+                        courseById.get(website.courseId)?.name ?? 'General';
+                      return (
+                        <NativeSelectOption key={website.id} value={website.id}>
+                          {website.label || website.url} · {courseName}
+                        </NativeSelectOption>
+                      );
+                    })}
+                  </NativeSelect>
+                  {attachedWebsites.length ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {attachedWebsites.map((website) => (
+                        <span
+                          key={website.id}
+                          className="inline-flex max-w-full items-center gap-1 border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-950/75"
+                        >
+                          <a
+                            href={website.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="max-w-28 truncate hover:text-blue-700"
+                            title={website.url}
+                          >
+                            {website.label || 'Link'}
+                          </a>
+                          <button
+                            type="button"
+                            className="font-black text-blue-950/55 hover:text-red-600"
+                            aria-label={`Remove ${website.label || 'link'}`}
+                            onClick={() =>
+                              updateAssignment(
+                                assignment.id,
+                                'linkIds',
+                                linkIds.filter((id) => id !== website.id),
+                              )
+                            }
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </TableCell>
               <TableCell>
                 <NativeSelect
