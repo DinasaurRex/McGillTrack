@@ -733,7 +733,9 @@ const assignmentWeekLabel = (
   const daysFromStart = daysBetweenIso(termStartDate, dueDate);
   if (daysFromStart === null) return 'Week 1';
 
-  const daysAfterEnd = termEndDate ? daysBetweenIso(termEndDate, dueDate) : null;
+  const daysAfterEnd = termEndDate
+    ? daysBetweenIso(termEndDate, dueDate)
+    : null;
   if (daysAfterEnd !== null && daysAfterEnd > 0) return 'Finals Week';
   if (daysFromStart < 0) return 'Before Classes';
 
@@ -1453,7 +1455,11 @@ const excelSheet = (workbook: ExcelWorkbook, sheetName: string) =>
     ([name]) => name.toLowerCase() === sheetName.toLowerCase(),
   )?.[1];
 
-const excelCell = (sheet: ExcelSheet | undefined, column: number, row: number) => {
+const excelCell = (
+  sheet: ExcelSheet | undefined,
+  column: number,
+  row: number,
+) => {
   const cell = sheet?.[excelAddress(column, row)];
   return typeof cell === 'object' && cell !== null ? cell : undefined;
 };
@@ -1479,7 +1485,11 @@ const optionalExcelText = (value: unknown) => {
   return /^(n\/a|na|none|null|undefined)$/i.test(text) ? '' : text;
 };
 
-const excelText = (sheet: ExcelSheet | undefined, column: number, row: number) => {
+const excelText = (
+  sheet: ExcelSheet | undefined,
+  column: number,
+  row: number,
+) => {
   const cell = excelCell(sheet, column, row);
   if (!cell) return '';
   return optionalExcelText(cell.v ?? cell.w);
@@ -1552,7 +1562,8 @@ const excelValueToTime = (value: unknown) => {
     if (asText.length <= 4) {
       const hours = Number(asText.slice(0, -2));
       const minutes = Number(asText.slice(-2));
-      if (hours < 24 && minutes < 60) return minutesToTime(hours * 60 + minutes);
+      if (hours < 24 && minutes < 60)
+        return minutesToTime(hours * 60 + minutes);
     }
   }
 
@@ -1627,9 +1638,7 @@ const findMatchingCourse = (courses: Course[], value: string) => {
 };
 
 const shouldImportSetupCourse = (name: string) =>
-  !!name &&
-  !/^class\s+\d+$/i.test(name) &&
-  !/^(random|n\/a|na)$/i.test(name);
+  !!name && !/^class\s+\d+$/i.test(name) && !/^(random|n\/a|na)$/i.test(name);
 
 const firstExcelTextInRange = (
   sheet: ExcelSheet | undefined,
@@ -1696,7 +1705,12 @@ const enrichCoursesFromClassOutline = (
       const credits = excelNumber(outline, startColumn + 4, rowGroup.values);
       const room =
         excelText(outline, startColumn + 4, rowGroup.room) ||
-        firstExcelTextInRange(outline, rowGroup.room, startColumn, startColumn + 6);
+        firstExcelTextInRange(
+          outline,
+          rowGroup.room,
+          startColumn,
+          startColumn + 6,
+        );
       const email =
         firstExcelTextInRange(
           outline,
@@ -1717,7 +1731,8 @@ const enrichCoursesFromClassOutline = (
         rowGroup.contact,
         startColumn,
         startColumn + 6,
-        (value) => !value.includes('@') && !/^(teams|contact info)$/i.test(value),
+        (value) =>
+          !value.includes('@') && !/^(teams|contact info)$/i.test(value),
       );
 
       if (code) course.code = code;
@@ -1736,7 +1751,10 @@ const normalizeAssignmentType = (value: string): AssignmentType => {
   return match ?? 'Assignment';
 };
 
-const normalizeAssignmentStatus = (value: string, submitted: boolean): Status => {
+const normalizeAssignmentStatus = (
+  value: string,
+  submitted: boolean,
+): Status => {
   const text = value.toLowerCase();
   if (text.includes('done') || submitted) return 'Done';
   if (text.includes('progress')) return 'In Progress';
@@ -1778,8 +1796,9 @@ const readGradebookScores = (workbook: ExcelWorkbook, courses: Course[]) => {
     scores.set(assignmentImportKey(course.id, title), {
       score:
         percentage > 0
-          ? Math.round((percentage <= 1 ? percentage * 100 : percentage) * 100) /
-            100
+          ? Math.round(
+              (percentage <= 1 ? percentage * 100 : percentage) * 100,
+            ) / 100
           : 0,
       maxScore: 100,
       weight,
@@ -1878,7 +1897,11 @@ const readExcelSchedule = (workbook: ExcelWorkbook, courses: Course[]) => {
 
       let location = '';
       let locationRow = row;
-      for (let nextRow = row + 1; nextRow <= Math.min(row + 4, 60); nextRow += 1) {
+      for (
+        let nextRow = row + 1;
+        nextRow <= Math.min(row + 4, 60);
+        nextRow += 1
+      ) {
         const nextText = excelText(sheet, column, nextRow);
         if (!nextText) continue;
         if (findMatchingCourse(courses, nextText)) break;
@@ -1932,7 +1955,9 @@ const readExcelHours = (workbook: ExcelWorkbook) => {
   return hours;
 };
 
-const parseAnnabelleExcelWorkbook = (workbook: ExcelWorkbook): ExcelImportResult => {
+const parseAnnabelleExcelWorkbook = (
+  workbook: ExcelWorkbook,
+): ExcelImportResult => {
   const termStartDate = initialTemplateDate;
   const termEndDate = addDays(94, termStartDate);
   const courses = readExcelSetupCourses(workbook);
@@ -1941,11 +1966,7 @@ const parseAnnabelleExcelWorkbook = (workbook: ExcelWorkbook): ExcelImportResult
   const assignments = readExcelAssignments(workbook, courses).map(
     (assignment) => ({
       ...assignment,
-      week: assignmentWeekLabel(
-        assignment.dueDate,
-        termStartDate,
-        termEndDate,
-      ),
+      week: assignmentWeekLabel(assignment.dueDate, termStartDate, termEndDate),
     }),
   );
   const schedule = readExcelSchedule(workbook, courses);
@@ -2218,9 +2239,7 @@ function StickyNoteCard({
       if (!widthChanged && !heightChanged) return;
 
       const otherHeights = heightChanged
-        ? Array.from(
-            document.querySelectorAll<HTMLElement>('[data-note-card]'),
-          )
+        ? Array.from(document.querySelectorAll<HTMLElement>('[data-note-card]'))
             .filter((card) => card.dataset.noteId !== note.id)
             .map((card) => card.offsetHeight)
         : [];
@@ -2275,9 +2294,7 @@ function StickyNoteCard({
           </p>
           <input
             value={note.title}
-            onChange={(event) =>
-              onUpdate(note.id, 'title', event.target.value)
-            }
+            onChange={(event) => onUpdate(note.id, 'title', event.target.value)}
             className="w-full min-w-0 bg-transparent text-xl leading-tight font-black text-blue-950 outline-none placeholder:text-blue-950/35 focus:bg-blue-50/60"
             placeholder="Untitled note"
             aria-label="Note title"
@@ -2719,7 +2736,11 @@ export default function Home() {
           data.termStartDate,
           data.termEndDate,
         ) ===
-          assignmentWeekLabel(todayIso(), data.termStartDate, data.termEndDate) &&
+          assignmentWeekLabel(
+            todayIso(),
+            data.termStartDate,
+            data.termEndDate,
+          ) &&
         assignment.status !== 'Done' &&
         !assignment.submitted,
     ).length;
@@ -2831,7 +2852,10 @@ export default function Home() {
     }));
   };
 
-  const updateTermDate = (key: 'termStartDate' | 'termEndDate', value: string) => {
+  const updateTermDate = (
+    key: 'termStartDate' | 'termEndDate',
+    value: string,
+  ) => {
     setData((current) => {
       const next = { ...current, [key]: value };
 
@@ -3474,7 +3498,11 @@ export default function Home() {
             </div>
           </div>
           <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-start xl:justify-end">
-            <Button className="w-full sm:w-auto" variant="outline" onClick={exportData}>
+            <Button
+              className="w-full sm:w-auto"
+              variant="outline"
+              onClick={exportData}
+            >
               <Download data-icon="inline-start" />
               Export
             </Button>
@@ -3505,7 +3533,11 @@ export default function Home() {
               <span className="sm:hidden">Data</span>
               <span className="hidden sm:inline">Import Data</span>
             </Button>
-            <Button className="col-span-2 w-full sm:col-span-1 sm:w-auto" variant="secondary" onClick={resetTemplate}>
+            <Button
+              className="col-span-2 w-full sm:col-span-1 sm:w-auto"
+              variant="secondary"
+              onClick={resetTemplate}
+            >
               <RotateCcw data-icon="inline-start" />
               Reset
             </Button>
@@ -3666,9 +3698,9 @@ export default function Home() {
 
           <TabsContent
             value="overview"
-            className="tablet-dashboard grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
+            className="tablet-dashboard grid min-w-0 items-stretch gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
           >
-            <section className="pixel-panel min-w-0 p-3 xl:p-4">
+            <section className="pixel-panel flex min-w-0 flex-col p-3 xl:p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-black">Assignment Board</h2>
@@ -3713,7 +3745,7 @@ export default function Home() {
               </div>
             </section>
 
-            <section className="pixel-panel min-w-0 p-3 xl:p-4">
+            <section className="pixel-panel flex min-w-0 flex-col p-3 xl:p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-xl font-black">Upcoming Assignments</h2>
                 <span className="border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-950/70">
@@ -3859,25 +3891,27 @@ export default function Home() {
                             className="min-h-12 border-r border-blue-200 bg-blue-50/30 px-1 py-1"
                           >
                             <div className="grid gap-1">
-                              {floatingAssignments.slice(0, 2).map((assignment) => {
-                                const course = courseById.get(
-                                  assignment.courseId,
-                                );
-                                return (
-                                  <div
-                                    key={assignment.id}
-                                    className="overflow-hidden border border-blue-300 px-2 py-0.5 text-center text-xs font-black text-blue-950"
-                                    style={{
-                                      background: course?.color ?? '#dbeafe',
-                                    }}
-                                    title={`${assignment.type}: ${assignment.title}`}
-                                  >
-                                    <p className="truncate">
-                                      {assignment.type}: {assignment.title}
-                                    </p>
-                                  </div>
-                                );
-                              })}
+                              {floatingAssignments
+                                .slice(0, 2)
+                                .map((assignment) => {
+                                  const course = courseById.get(
+                                    assignment.courseId,
+                                  );
+                                  return (
+                                    <div
+                                      key={assignment.id}
+                                      className="overflow-hidden border border-blue-300 px-2 py-0.5 text-center text-xs font-black text-blue-950"
+                                      style={{
+                                        background: course?.color ?? '#dbeafe',
+                                      }}
+                                      title={`${assignment.type}: ${assignment.title}`}
+                                    >
+                                      <p className="truncate">
+                                        {assignment.type}: {assignment.title}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
                               {floatingAssignments.length > 2 ? (
                                 <div className="border border-blue-200 bg-white/70 px-2 py-0.5 text-center text-xs font-black text-blue-950/65">
                                   +{floatingAssignments.length - 2} more
@@ -3944,88 +3978,86 @@ export default function Home() {
                         style={{ height: scheduleGridHeight }}
                       >
                         {weeklyShowClasses
-                          ? dayScheduleBlocks
-                              .map((block) => {
-                                const course = courseById.get(block.courseId);
-                                const layout = scheduleBlockLayout(block);
-                                const compactBlock = layout.height < 58;
-                                const blockAssignments =
-                                  weeklyAssignments.filter(
-                                    (assignment) =>
-                                      weeklyShowAssignments &&
-                                      assignmentAttachesToBlock(
-                                        assignment,
-                                        date,
-                                        block,
-                                        dayScheduleBlocks,
-                                      ),
-                                  );
-                                return (
-                                  <div
-                                    key={block.id}
-                                    className={`absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
-                                      compactBlock ? 'py-1' : 'py-1.5'
-                                    }`}
-                                    style={{
-                                      top: layout.top,
-                                      height: layout.height,
-                                      background: course?.color ?? '#dbeafe',
-                                    }}
-                                    title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
-                                  >
-                                    <div className="flex h-full min-h-0 items-center justify-center">
-                                      <div className="min-w-0 max-w-full">
-                                        <p
-                                          className={`truncate font-black leading-tight ${
-                                            compactBlock ? 'text-xs' : 'text-sm'
-                                          }`}
-                                        >
-                                          {course?.name ?? 'Course'}
+                          ? dayScheduleBlocks.map((block) => {
+                              const course = courseById.get(block.courseId);
+                              const layout = scheduleBlockLayout(block);
+                              const compactBlock = layout.height < 58;
+                              const blockAssignments = weeklyAssignments.filter(
+                                (assignment) =>
+                                  weeklyShowAssignments &&
+                                  assignmentAttachesToBlock(
+                                    assignment,
+                                    date,
+                                    block,
+                                    dayScheduleBlocks,
+                                  ),
+                              );
+                              return (
+                                <div
+                                  key={block.id}
+                                  className={`absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
+                                    compactBlock ? 'py-1' : 'py-1.5'
+                                  }`}
+                                  style={{
+                                    top: layout.top,
+                                    height: layout.height,
+                                    background: course?.color ?? '#dbeafe',
+                                  }}
+                                  title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
+                                >
+                                  <div className="flex h-full min-h-0 items-center justify-center">
+                                    <div className="min-w-0 max-w-full">
+                                      <p
+                                        className={`truncate font-black leading-tight ${
+                                          compactBlock ? 'text-xs' : 'text-sm'
+                                        }`}
+                                      >
+                                        {course?.name ?? 'Course'}
+                                      </p>
+                                      <p
+                                        className={`text-xs leading-tight text-blue-950/70 ${
+                                          compactBlock ? 'truncate' : ''
+                                        }`}
+                                      >
+                                        {formatBlockTimeRange(block)}
+                                        {compactBlock
+                                          ? ` · ${block.location || course?.room || 'Location'}`
+                                          : ''}
+                                      </p>
+                                      {!compactBlock ? (
+                                        <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                          {block.location ||
+                                            course?.room ||
+                                            'Location'}
                                         </p>
-                                        <p
-                                          className={`text-xs leading-tight text-blue-950/70 ${
-                                            compactBlock ? 'truncate' : ''
-                                          }`}
-                                        >
-                                          {formatBlockTimeRange(block)}
-                                          {compactBlock
-                                            ? ` · ${block.location || course?.room || 'Location'}`
-                                            : ''}
+                                      ) : null}
+                                      {!compactBlock && block.type ? (
+                                        <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                          {block.type}
                                         </p>
-                                        {!compactBlock ? (
-                                          <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
-                                            {block.location ||
-                                              course?.room ||
-                                              'Location'}
+                                      ) : null}
+                                      {blockAssignments
+                                        .slice(0, compactBlock ? 1 : 2)
+                                        .map((assignment) => (
+                                          <p
+                                            key={assignment.id}
+                                            className="mt-1 truncate border border-blue-300 bg-white/70 px-1 text-xs font-black leading-tight text-blue-950"
+                                          >
+                                            {assignment.type}:{' '}
+                                            {assignment.title}
                                           </p>
-                                        ) : null}
-                                        {!compactBlock && block.type ? (
-                                          <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
-                                            {block.type}
-                                          </p>
-                                        ) : null}
-                                        {blockAssignments
-                                          .slice(0, compactBlock ? 1 : 2)
-                                          .map((assignment) => (
-                                            <p
-                                              key={assignment.id}
-                                              className="mt-1 truncate border border-blue-300 bg-white/70 px-1 text-xs font-black leading-tight text-blue-950"
-                                            >
-                                              {assignment.type}:{' '}
-                                              {assignment.title}
-                                            </p>
-                                          ))}
-                                        {!compactBlock &&
-                                        blockAssignments.length > 2 ? (
-                                          <p className="mt-1 truncate border border-blue-200 bg-white/60 px-1 text-xs font-black leading-tight text-blue-950/65">
-                                            +{blockAssignments.length - 2} more
-                                          </p>
-                                        ) : null}
-                                      </div>
+                                        ))}
+                                      {!compactBlock &&
+                                      blockAssignments.length > 2 ? (
+                                        <p className="mt-1 truncate border border-blue-200 bg-white/60 px-1 text-xs font-black leading-tight text-blue-950/65">
+                                          +{blockAssignments.length - 2} more
+                                        </p>
+                                      ) : null}
                                     </div>
                                   </div>
-                                );
-                              })
+                                </div>
+                              );
+                            })
                           : null}
                         {weeklyShowOfficeHours
                           ? data.officeHours
@@ -4363,121 +4395,137 @@ export default function Home() {
               </div>
               <div className="hidden min-w-0 overflow-x-auto md:block">
                 <Table className="min-w-[900px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Course</TableHead>
-                    <TableHead>Color</TableHead>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Room</TableHead>
-                    <TableHead>Instructor</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Section</TableHead>
-                    <TableHead>Credits</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.courses.map((course) => (
-                    <TableRow key={course.id}>
-                      <TableCell>
-                        <TextInput
-                          value={course.name}
-                          onChange={(event) =>
-                            updateCourse(course.id, 'name', event.target.value)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="w-[136px]">
-                          <CourseColorControls
-                            value={course.color}
-                            size="sm"
-                            presetLimit={3}
-                            label={`Set ${course.name || 'course'} color`}
-                            onChange={(color) =>
-                              updateCourse(course.id, 'color', color)
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Course</TableHead>
+                      <TableHead>Color</TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Room</TableHead>
+                      <TableHead>Instructor</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Section</TableHead>
+                      <TableHead>Credits</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.courses.map((course) => (
+                      <TableRow key={course.id}>
+                        <TableCell>
+                          <TextInput
+                            value={course.name}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'name',
+                                event.target.value,
+                              )
                             }
                           />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          value={course.code}
-                          onChange={(event) =>
-                            updateCourse(course.id, 'code', event.target.value)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          value={course.room}
-                          onChange={(event) =>
-                            updateCourse(course.id, 'room', event.target.value)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          value={course.instructor}
-                          onChange={(event) =>
-                            updateCourse(
-                              course.id,
-                              'instructor',
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          type="email"
-                          value={course.email ?? ''}
-                          onChange={(event) =>
-                            updateCourse(course.id, 'email', event.target.value)
-                          }
-                          className="w-52"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          value={course.section ?? ''}
-                          onChange={(event) =>
-                            updateCourse(
-                              course.id,
-                              'section',
-                              event.target.value,
-                            )
-                          }
-                          className="w-28"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextInput
-                          type="number"
-                          value={course.credits}
-                          onChange={(event) =>
-                            updateCourse(
-                              course.id,
-                              'credits',
-                              numberValue(event.target.value),
-                            )
-                          }
-                          className="w-20"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          aria-label={`Delete ${course.name}`}
-                          onClick={() => removeItem('courses', course.id)}
-                        >
-                          <Trash2 />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
+                        </TableCell>
+                        <TableCell>
+                          <div className="w-[136px]">
+                            <CourseColorControls
+                              value={course.color}
+                              size="sm"
+                              presetLimit={3}
+                              label={`Set ${course.name || 'course'} color`}
+                              onChange={(color) =>
+                                updateCourse(course.id, 'color', color)
+                              }
+                            />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <TextInput
+                            value={course.code}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'code',
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextInput
+                            value={course.room}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'room',
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextInput
+                            value={course.instructor}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'instructor',
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextInput
+                            type="email"
+                            value={course.email ?? ''}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'email',
+                                event.target.value,
+                              )
+                            }
+                            className="w-52"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextInput
+                            value={course.section ?? ''}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'section',
+                                event.target.value,
+                              )
+                            }
+                            className="w-28"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextInput
+                            type="number"
+                            value={course.credits}
+                            onChange={(event) =>
+                              updateCourse(
+                                course.id,
+                                'credits',
+                                numberValue(event.target.value),
+                              )
+                            }
+                            className="w-20"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            aria-label={`Delete ${course.name}`}
+                            onClick={() => removeItem('courses', course.id)}
+                          >
+                            <Trash2 />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
                 </Table>
               </div>
             </section>
@@ -4723,133 +4771,139 @@ export default function Home() {
                 onDelete={(id) => removeItem('schedule', id)}
               />
               <div className="hidden min-w-0 overflow-x-auto md:block">
-              <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
-                <div />
-                {days.map((day) => (
-                  <div
-                    key={day}
-                    className="mx-1 border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black"
-                  >
-                    {day}
-                  </div>
-                ))}
-                <div
-                  className="relative border-r border-blue-200"
-                  style={{ height: scheduleGridHeight }}
-                >
-                  {scheduleHours.map((hour) => (
-                    <span
-                      key={hour}
-                      className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
-                      style={{
-                        top:
-                          ((hour - scheduleStartHour) /
-                            (scheduleEndHour - scheduleStartHour)) *
-                          scheduleGridHeight,
-                      }}
+                <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
+                  <div />
+                  {days.map((day) => (
+                    <div
+                      key={day}
+                      className="mx-1 border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black"
                     >
-                      {formatScheduleHour(hour)}
-                    </span>
+                      {day}
+                    </div>
                   ))}
-                </div>
-                {days.map((day) => (
                   <div
-                    key={day}
-                    className="schedule-day-column relative border-r border-blue-200"
+                    className="relative border-r border-blue-200"
                     style={{ height: scheduleGridHeight }}
                   >
-                    {data.schedule
-                      .filter((block) => block.day === day)
-                      .sort((a, b) => a.start.localeCompare(b.start))
-                      .map((block) => {
-                        const course = courseById.get(block.courseId);
-                        const layout = scheduleBlockLayout(block);
-                        const compactBlock = layout.height < 58;
-                        return (
-                          <div
-                            key={block.id}
-                            className={`group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
-                              compactBlock ? 'py-1' : 'py-1.5'
-                            }`}
-                            style={{
-                              top: layout.top,
-                              height: layout.height,
-                              background: course?.color ?? '#dbeafe',
-                            }}
-                            title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
-                          >
-                            <button
-                              type="button"
-                              aria-label={`Adjust ${course?.name ?? 'class'} start time`}
-                              className={`absolute top-0 right-7 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
-                                resizingScheduleBlockId === block.id
-                                  ? 'bg-blue-300/40'
-                                  : ''
-                              }`}
-                              title="Drag to adjust start time"
-                              onPointerDown={(event) =>
-                                startScheduleBlockResize(event, 'start', block)
-                              }
-                            />
-                            <button
-                              type="button"
-                              aria-label={`Adjust ${course?.name ?? 'class'} end time`}
-                              className={`absolute right-0 bottom-0 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
-                                resizingScheduleBlockId === block.id
-                                  ? 'bg-blue-300/40'
-                                  : ''
-                              }`}
-                              title="Drag to adjust end time"
-                              onPointerDown={(event) =>
-                                startScheduleBlockResize(event, 'end', block)
-                              }
-                            />
-                            <div className="flex h-full min-h-0 items-center justify-center">
-                              <div className="min-w-0 max-w-full">
-                                <p
-                                  className={`truncate font-black leading-tight ${
-                                    compactBlock ? 'text-xs' : 'text-sm'
-                                  }`}
-                                >
-                                  {course?.name ?? 'Course'}
-                                </p>
-                                <p
-                                  className={`text-xs leading-tight text-blue-950/70 ${
-                                    compactBlock ? 'truncate' : ''
-                                  }`}
-                                >
-                                  {formatBlockTimeRange(block)}
-                                  {compactBlock
-                                    ? ` · ${block.location || course?.room || 'Location'}`
-                                    : ''}
-                                </p>
-                                {!compactBlock ? (
-                                  <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
-                                    {block.location ||
-                                      course?.room ||
-                                      'Location'}
-                                  </p>
-                                ) : null}
-                                {!compactBlock && block.type ? (
-                                  <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
-                                    {block.type}
-                                  </p>
-                                ) : null}
-                              </div>
-                              <button
-                                aria-label="Delete schedule block"
-                                className="absolute top-1 right-1 opacity-0 transition group-hover:opacity-100"
-                                onClick={() => removeItem('schedule', block.id)}
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    {scheduleHours.map((hour) => (
+                      <span
+                        key={hour}
+                        className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
+                        style={{
+                          top:
+                            ((hour - scheduleStartHour) /
+                              (scheduleEndHour - scheduleStartHour)) *
+                            scheduleGridHeight,
+                        }}
+                      >
+                        {formatScheduleHour(hour)}
+                      </span>
+                    ))}
                   </div>
-                ))}
-              </div>
+                  {days.map((day) => (
+                    <div
+                      key={day}
+                      className="schedule-day-column relative border-r border-blue-200"
+                      style={{ height: scheduleGridHeight }}
+                    >
+                      {data.schedule
+                        .filter((block) => block.day === day)
+                        .sort((a, b) => a.start.localeCompare(b.start))
+                        .map((block) => {
+                          const course = courseById.get(block.courseId);
+                          const layout = scheduleBlockLayout(block);
+                          const compactBlock = layout.height < 58;
+                          return (
+                            <div
+                              key={block.id}
+                              className={`group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
+                                compactBlock ? 'py-1' : 'py-1.5'
+                              }`}
+                              style={{
+                                top: layout.top,
+                                height: layout.height,
+                                background: course?.color ?? '#dbeafe',
+                              }}
+                              title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
+                            >
+                              <button
+                                type="button"
+                                aria-label={`Adjust ${course?.name ?? 'class'} start time`}
+                                className={`absolute top-0 right-7 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
+                                  resizingScheduleBlockId === block.id
+                                    ? 'bg-blue-300/40'
+                                    : ''
+                                }`}
+                                title="Drag to adjust start time"
+                                onPointerDown={(event) =>
+                                  startScheduleBlockResize(
+                                    event,
+                                    'start',
+                                    block,
+                                  )
+                                }
+                              />
+                              <button
+                                type="button"
+                                aria-label={`Adjust ${course?.name ?? 'class'} end time`}
+                                className={`absolute right-0 bottom-0 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
+                                  resizingScheduleBlockId === block.id
+                                    ? 'bg-blue-300/40'
+                                    : ''
+                                }`}
+                                title="Drag to adjust end time"
+                                onPointerDown={(event) =>
+                                  startScheduleBlockResize(event, 'end', block)
+                                }
+                              />
+                              <div className="flex h-full min-h-0 items-center justify-center">
+                                <div className="min-w-0 max-w-full">
+                                  <p
+                                    className={`truncate font-black leading-tight ${
+                                      compactBlock ? 'text-xs' : 'text-sm'
+                                    }`}
+                                  >
+                                    {course?.name ?? 'Course'}
+                                  </p>
+                                  <p
+                                    className={`text-xs leading-tight text-blue-950/70 ${
+                                      compactBlock ? 'truncate' : ''
+                                    }`}
+                                  >
+                                    {formatBlockTimeRange(block)}
+                                    {compactBlock
+                                      ? ` · ${block.location || course?.room || 'Location'}`
+                                      : ''}
+                                  </p>
+                                  {!compactBlock ? (
+                                    <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                      {block.location ||
+                                        course?.room ||
+                                        'Location'}
+                                    </p>
+                                  ) : null}
+                                  {!compactBlock && block.type ? (
+                                    <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                      {block.type}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  aria-label="Delete schedule block"
+                                  className="absolute top-1 right-1 opacity-0 transition group-hover:opacity-100"
+                                  onClick={() =>
+                                    removeItem('schedule', block.id)
+                                  }
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
           </TabsContent>
@@ -4985,137 +5039,137 @@ export default function Home() {
                 onDelete={(id) => removeItem('officeHours', id)}
               />
               <div className="hidden min-w-0 overflow-x-auto md:block">
-              <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
-                <div />
-                {days.map((day) => (
-                  <div
-                    key={day}
-                    className="mx-1 border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black"
-                  >
-                    {day}
-                  </div>
-                ))}
-                <div
-                  className="relative border-r border-blue-200"
-                  style={{ height: scheduleGridHeight }}
-                >
-                  {scheduleHours.map((hour) => (
-                    <span
-                      key={hour}
-                      className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
-                      style={{
-                        top:
-                          ((hour - scheduleStartHour) /
-                            (scheduleEndHour - scheduleStartHour)) *
-                          scheduleGridHeight,
-                      }}
+                <div className="grid min-w-[860px] grid-cols-[64px_repeat(5,minmax(140px,1fr))]">
+                  <div />
+                  {days.map((day) => (
+                    <div
+                      key={day}
+                      className="mx-1 border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black"
                     >
-                      {formatScheduleHour(hour)}
-                    </span>
+                      {day}
+                    </div>
                   ))}
-                </div>
-                {days.map((day) => (
                   <div
-                    key={day}
-                    className="schedule-day-column relative border-r border-blue-200"
+                    className="relative border-r border-blue-200"
                     style={{ height: scheduleGridHeight }}
                   >
-                    {data.officeHours
-                      .filter((block) => block.day === day)
-                      .sort((a, b) => a.start.localeCompare(b.start))
-                      .map((block) => {
-                        const course = courseById.get(block.courseId);
-                        const layout = scheduleBlockLayout(block);
-                        const compactBlock = layout.height < 64;
-                        return (
-                          <div
-                            key={block.id}
-                            className={`group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
-                              compactBlock ? 'py-1' : 'py-1.5'
-                            }`}
-                            style={{
-                              top: layout.top,
-                              height: layout.height,
-                              background: course?.color ?? '#dbeafe',
-                            }}
-                            title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.office || 'Office'} · ${block.teacher || course?.instructor || 'Professor'}`}
-                          >
-                            <button
-                              type="button"
-                              aria-label={`Adjust ${course?.name ?? 'office hours'} start time`}
-                              className={`absolute top-0 right-7 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
-                                resizingScheduleBlockId === block.id
-                                  ? 'bg-blue-300/40'
-                                  : ''
-                              }`}
-                              title="Drag to adjust start time"
-                              onPointerDown={(event) =>
-                                startScheduleBlockResize(
-                                  event,
-                                  'start',
-                                  block,
-                                  'officeHours',
-                                )
-                              }
-                            />
-                            <button
-                              type="button"
-                              aria-label={`Adjust ${course?.name ?? 'office hours'} end time`}
-                              className={`absolute right-0 bottom-0 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
-                                resizingScheduleBlockId === block.id
-                                  ? 'bg-blue-300/40'
-                                  : ''
-                              }`}
-                              title="Drag to adjust end time"
-                              onPointerDown={(event) =>
-                                startScheduleBlockResize(
-                                  event,
-                                  'end',
-                                  block,
-                                  'officeHours',
-                                )
-                              }
-                            />
-                            <div className="flex h-full min-h-0 items-center justify-center">
-                              <div className="min-w-0 max-w-full">
-                                <p
-                                  className={`truncate font-black leading-tight ${
-                                    compactBlock ? 'text-xs' : 'text-sm'
-                                  }`}
-                                >
-                                  {course?.name ?? 'Course'}
-                                </p>
-                                <p className="text-xs leading-tight text-blue-950/70">
-                                  {formatBlockTimeRange(block)} ·{'  '}
-                                  {block.office || 'Office'}
-                                </p>
-                                <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
-                                  {block.teacher ||
-                                    course?.instructor ||
-                                    'Professor'}
-                                </p>
-                                {!compactBlock && block.notes ? (
-                                  <p className="truncate text-xs leading-tight text-blue-950/65">
-                                    {block.notes}
-                                  </p>
-                                ) : null}
-                              </div>
-                              <button
-                                aria-label="Delete office hours"
-                                className="absolute top-1 right-1 opacity-0 transition group-hover:opacity-100"
-                                onClick={() =>
-                                  removeItem('officeHours', block.id)
-                                }
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    {scheduleHours.map((hour) => (
+                      <span
+                        key={hour}
+                        className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
+                        style={{
+                          top:
+                            ((hour - scheduleStartHour) /
+                              (scheduleEndHour - scheduleStartHour)) *
+                            scheduleGridHeight,
+                        }}
+                      >
+                        {formatScheduleHour(hour)}
+                      </span>
+                    ))}
                   </div>
-                ))}
-              </div>
+                  {days.map((day) => (
+                    <div
+                      key={day}
+                      className="schedule-day-column relative border-r border-blue-200"
+                      style={{ height: scheduleGridHeight }}
+                    >
+                      {data.officeHours
+                        .filter((block) => block.day === day)
+                        .sort((a, b) => a.start.localeCompare(b.start))
+                        .map((block) => {
+                          const course = courseById.get(block.courseId);
+                          const layout = scheduleBlockLayout(block);
+                          const compactBlock = layout.height < 64;
+                          return (
+                            <div
+                              key={block.id}
+                              className={`group absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
+                                compactBlock ? 'py-1' : 'py-1.5'
+                              }`}
+                              style={{
+                                top: layout.top,
+                                height: layout.height,
+                                background: course?.color ?? '#dbeafe',
+                              }}
+                              title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.office || 'Office'} · ${block.teacher || course?.instructor || 'Professor'}`}
+                            >
+                              <button
+                                type="button"
+                                aria-label={`Adjust ${course?.name ?? 'office hours'} start time`}
+                                className={`absolute top-0 right-7 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
+                                  resizingScheduleBlockId === block.id
+                                    ? 'bg-blue-300/40'
+                                    : ''
+                                }`}
+                                title="Drag to adjust start time"
+                                onPointerDown={(event) =>
+                                  startScheduleBlockResize(
+                                    event,
+                                    'start',
+                                    block,
+                                    'officeHours',
+                                  )
+                                }
+                              />
+                              <button
+                                type="button"
+                                aria-label={`Adjust ${course?.name ?? 'office hours'} end time`}
+                                className={`absolute right-0 bottom-0 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
+                                  resizingScheduleBlockId === block.id
+                                    ? 'bg-blue-300/40'
+                                    : ''
+                                }`}
+                                title="Drag to adjust end time"
+                                onPointerDown={(event) =>
+                                  startScheduleBlockResize(
+                                    event,
+                                    'end',
+                                    block,
+                                    'officeHours',
+                                  )
+                                }
+                              />
+                              <div className="flex h-full min-h-0 items-center justify-center">
+                                <div className="min-w-0 max-w-full">
+                                  <p
+                                    className={`truncate font-black leading-tight ${
+                                      compactBlock ? 'text-xs' : 'text-sm'
+                                    }`}
+                                  >
+                                    {course?.name ?? 'Course'}
+                                  </p>
+                                  <p className="text-xs leading-tight text-blue-950/70">
+                                    {formatBlockTimeRange(block)} ·{'  '}
+                                    {block.office || 'Office'}
+                                  </p>
+                                  <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                    {block.teacher ||
+                                      course?.instructor ||
+                                      'Professor'}
+                                  </p>
+                                  {!compactBlock && block.notes ? (
+                                    <p className="truncate text-xs leading-tight text-blue-950/65">
+                                      {block.notes}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  aria-label="Delete office hours"
+                                  className="absolute top-1 right-1 opacity-0 transition group-hover:opacity-100"
+                                  onClick={() =>
+                                    removeItem('officeHours', block.id)
+                                  }
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
           </TabsContent>
@@ -5478,7 +5532,9 @@ export default function Home() {
                 >
                   <StickyNoteCard
                     note={note}
-                    courseName={courseById.get(note.courseId)?.name ?? 'General'}
+                    courseName={
+                      courseById.get(note.courseId)?.name ?? 'General'
+                    }
                     onResize={saveNoteSize}
                     onUpdate={updateNote}
                     onDelete={(id) => removeItem('notes', id)}
@@ -5640,11 +5696,7 @@ function CourseSelect({
   };
 
   return (
-    <NativeSelect
-      value={value}
-      onChange={handleChange}
-      className="w-full"
-    >
+    <NativeSelect value={value} onChange={handleChange} className="w-full">
       {courses.map((course) => (
         <NativeSelectOption key={course.id} value={course.id}>
           {course.name}
@@ -5656,6 +5708,735 @@ function CourseSelect({
         </NativeSelectOption>
       ) : null}
     </NativeSelect>
+  );
+}
+
+function WeeklyMobileAgenda({
+  days,
+  weeklyDates,
+  assignments,
+  schedule,
+  officeHours,
+  courseById,
+  showClasses,
+  showOfficeHours,
+  showAssignments,
+}: {
+  days: string[];
+  weeklyDates: string[];
+  assignments: Assignment[];
+  schedule: ScheduleBlock[];
+  officeHours: OfficeHourBlock[];
+  courseById: Map<string, Course>;
+  showClasses: boolean;
+  showOfficeHours: boolean;
+  showAssignments: boolean;
+}) {
+  return (
+    <div className="grid gap-3 md:hidden">
+      {days.map((day, index) => {
+        const date = weeklyDates[index];
+        const dayBlocks = schedule
+          .filter((block) => block.day === day)
+          .sort((first, second) => first.start.localeCompare(second.start));
+        const dayOfficeHours = officeHours
+          .filter((block) => block.day === day)
+          .sort((first, second) => first.start.localeCompare(second.start));
+        const attachedAssignmentIds = new Set<string>();
+
+        const items: {
+          id: string;
+          sort: string;
+          node: React.ReactNode;
+        }[] = [];
+
+        if (showClasses) {
+          dayBlocks.forEach((block) => {
+            const course = courseById.get(block.courseId);
+            const attachedAssignments = showAssignments
+              ? assignments.filter((assignment) =>
+                  assignmentAttachesToBlock(assignment, date, block, dayBlocks),
+                )
+              : [];
+            attachedAssignments.forEach((assignment) =>
+              attachedAssignmentIds.add(assignment.id),
+            );
+
+            items.push({
+              id: `class-${block.id}`,
+              sort: block.start,
+              node: (
+                <article
+                  className="grid min-w-0 gap-2 overflow-hidden border-2 border-blue-200 p-3"
+                  style={{ background: course?.color ?? '#dbeafe' }}
+                >
+                  <div className="min-w-0">
+                    <h4 className="truncate font-black text-blue-950">
+                      {course?.name ?? 'Course'}
+                    </h4>
+                    <p className="text-sm font-semibold text-blue-950/70">
+                      {formatBlockTimeRange(block)}
+                    </p>
+                    <p className="truncate text-sm text-blue-950/70">
+                      {block.location || course?.room || 'Location'}
+                    </p>
+                    {block.type ? (
+                      <p className="truncate text-xs font-semibold text-blue-950/65">
+                        {block.type}
+                      </p>
+                    ) : null}
+                  </div>
+                  {attachedAssignments.length ? (
+                    <div className="grid gap-1">
+                      {attachedAssignments.map((assignment) => (
+                        <div
+                          key={assignment.id}
+                          className="border border-blue-300 bg-white/70 px-2 py-1 text-sm font-black text-blue-950"
+                        >
+                          <p className="truncate">{assignment.title}</p>
+                          <p className="text-xs font-semibold text-blue-950/65">
+                            {assignment.type}
+                            {assignment.dueTime
+                              ? ` · Due ${formatDueTime(assignment.dueTime)}`
+                              : ''}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ),
+            });
+          });
+        }
+
+        if (showOfficeHours) {
+          dayOfficeHours.forEach((block) => {
+            const course = courseById.get(block.courseId);
+            items.push({
+              id: `office-${block.id}`,
+              sort: block.start,
+              node: (
+                <article
+                  className="grid min-w-0 gap-1 overflow-hidden border-2 border-blue-200 bg-purple-100 p-3"
+                  style={{ background: course?.color ?? '#e9d5ff' }}
+                >
+                  <p className="text-xs font-black uppercase text-blue-950/65">
+                    Office Hours
+                  </p>
+                  <h4 className="truncate font-black text-blue-950">
+                    {course?.name ?? 'Course'}
+                  </h4>
+                  <p className="text-sm font-semibold text-blue-950/70">
+                    {formatBlockTimeRange(block)}
+                  </p>
+                  <p className="truncate text-sm text-blue-950/70">
+                    {block.office || 'Office'}
+                  </p>
+                  <p className="truncate text-sm text-blue-950/70">
+                    {block.teacher || course?.instructor || 'Instructor'}
+                  </p>
+                  {block.notes ? (
+                    <p className="text-sm text-blue-950/65">{block.notes}</p>
+                  ) : null}
+                </article>
+              ),
+            });
+          });
+        }
+
+        if (showAssignments) {
+          assignments
+            .filter(
+              (assignment) =>
+                assignment.dueDate === date &&
+                !attachedAssignmentIds.has(assignment.id),
+            )
+            .forEach((assignment) => {
+              const course = courseById.get(assignment.courseId);
+              items.push({
+                id: `assignment-${assignment.id}`,
+                sort: assignment.dueTime || '23:59',
+                node: (
+                  <article
+                    className="grid min-w-0 gap-1 overflow-hidden border-2 border-blue-200 bg-blue-50 p-3"
+                    style={{ background: course?.color ?? '#dbeafe' }}
+                  >
+                    <p className="text-xs font-black uppercase text-blue-950/65">
+                      {assignment.type}
+                    </p>
+                    <h4 className="truncate font-black text-blue-950">
+                      {assignment.title || 'Untitled assignment'}
+                    </h4>
+                    <p className="truncate text-sm font-semibold text-blue-950/70">
+                      {course?.name ?? 'Course'}
+                    </p>
+                    <p className="text-sm text-blue-950/70">
+                      Due{' '}
+                      {assignment.dueTime
+                        ? formatDueTime(assignment.dueTime)
+                        : formatMonthDay(assignment.dueDate)}
+                    </p>
+                  </article>
+                ),
+              });
+            });
+        }
+
+        items.sort((first, second) => first.sort.localeCompare(second.sort));
+
+        return (
+          <section key={day} className="grid gap-2">
+            <h3 className="border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black text-blue-950">
+              {day}
+              <span className="ml-2 text-xs font-bold text-blue-950/55">
+                {formatMonthDay(date)}
+              </span>
+            </h3>
+            {items.length ? (
+              items.map((item) => <div key={item.id}>{item.node}</div>)
+            ) : (
+              <div className="border-2 border-blue-100 bg-white/70 p-3 text-sm font-semibold text-blue-950/55">
+                Nothing scheduled.
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function AssignmentMobileCards({
+  assignments,
+  courseById,
+  websites,
+  termStartDate,
+  termEndDate,
+  updateAssignment,
+  removeAssignment,
+}: {
+  assignments: Assignment[];
+  courseById: Map<string, Course>;
+  websites: WebsiteEntry[];
+  termStartDate: string;
+  termEndDate: string;
+  updateAssignment: <K extends keyof Assignment>(
+    id: string,
+    key: K,
+    value: Assignment[K],
+  ) => void;
+  removeAssignment: (id: string) => void;
+}) {
+  const websiteById = new Map(websites.map((website) => [website.id, website]));
+  const sortedAssignments = [...assignments].sort((first, second) => {
+    const firstDone = first.status === 'Done' || first.submitted;
+    const secondDone = second.status === 'Done' || second.submitted;
+    if (firstDone !== secondDone) return firstDone ? 1 : -1;
+
+    const firstDue = new Date(
+      `${first.dueDate || '9999-12-31'}T${first.dueTime || '23:59'}`,
+    ).getTime();
+    const secondDue = new Date(
+      `${second.dueDate || '9999-12-31'}T${second.dueTime || '23:59'}`,
+    ).getTime();
+
+    if (firstDue !== secondDue) return firstDue - secondDue;
+    return first.title.localeCompare(second.title);
+  });
+
+  if (!sortedAssignments.length) {
+    return (
+      <div className="border-2 border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-950/70">
+        No assignments yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      {sortedAssignments.map((assignment) => {
+        const left = daysLeft(assignment.dueDate);
+        const done = assignment.status === 'Done' || assignment.submitted;
+        const week = assignmentWeekLabel(
+          assignment.dueDate,
+          termStartDate,
+          termEndDate,
+        );
+        const linkIds = assignment.linkIds ?? [];
+        const attachedWebsites = linkIds
+          .map((id) => websiteById.get(id))
+          .filter((website): website is WebsiteEntry => Boolean(website));
+        const availableWebsites = websites
+          .filter(
+            (website) => website.url.trim() && !linkIds.includes(website.id),
+          )
+          .sort((first, second) => {
+            const firstMatchesCourse =
+              first.courseId === assignment.courseId ? 0 : 1;
+            const secondMatchesCourse =
+              second.courseId === assignment.courseId ? 0 : 1;
+            if (firstMatchesCourse !== secondMatchesCourse) {
+              return firstMatchesCourse - secondMatchesCourse;
+            }
+
+            return first.label.localeCompare(second.label);
+          });
+        const urgencyClass =
+          !done && left !== null && left <= 2
+            ? 'bg-red-50'
+            : !done && left !== null && left <= 5
+              ? 'bg-orange-50'
+              : 'bg-white';
+        const urgencyTextClass =
+          !done && left !== null && left <= 2
+            ? 'text-red-700'
+            : !done && left !== null && left <= 5
+              ? 'text-orange-700'
+              : 'text-blue-950';
+        const leftLabel =
+          left === null
+            ? '-'
+            : left < 0
+              ? `${Math.abs(left)} late`
+              : `${left} days left`;
+
+        return (
+          <article
+            key={assignment.id}
+            className={`grid min-w-0 gap-3 overflow-hidden border-2 border-blue-200 p-3 ${urgencyClass}`}
+          >
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-blue-950/65">
+                  {courseById.get(assignment.courseId)?.name ?? 'Course'}
+                </p>
+                <p className={`text-sm font-black ${urgencyTextClass}`}>
+                  {leftLabel}
+                </p>
+              </div>
+              <Button
+                variant="destructive"
+                size="icon"
+                aria-label={`Delete ${assignment.title || 'assignment'}`}
+                onClick={() => removeAssignment(assignment.id)}
+              >
+                <Trash2 />
+              </Button>
+            </div>
+            <Field label="Assignment">
+              <TextInput
+                value={assignment.title}
+                onChange={(event) =>
+                  updateAssignment(assignment.id, 'title', event.target.value)
+                }
+              />
+            </Field>
+            <div className="grid gap-2">
+              <NativeSelect
+                value=""
+                onChange={(event) => {
+                  const websiteId = event.target.value;
+                  if (!websiteId) return;
+                  updateAssignment(assignment.id, 'linkIds', [
+                    ...linkIds,
+                    websiteId,
+                  ]);
+                }}
+              >
+                <NativeSelectOption value="">
+                  Attach saved link...
+                </NativeSelectOption>
+                {availableWebsites.map((website) => {
+                  const courseName =
+                    courseById.get(website.courseId)?.name ?? 'General';
+                  return (
+                    <NativeSelectOption key={website.id} value={website.id}>
+                      {website.label || website.url} · {courseName}
+                    </NativeSelectOption>
+                  );
+                })}
+              </NativeSelect>
+              {attachedWebsites.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {attachedWebsites.map((website) => (
+                    <span
+                      key={website.id}
+                      className="inline-flex max-w-full items-center gap-1 border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-950/75"
+                    >
+                      <a
+                        href={website.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="max-w-36 truncate hover:text-blue-700"
+                        title={website.url}
+                      >
+                        {website.label || 'Link'}
+                      </a>
+                      <button
+                        type="button"
+                        className="font-black text-blue-950/55 hover:text-red-600"
+                        aria-label={`Remove ${website.label || 'link'}`}
+                        onClick={() =>
+                          updateAssignment(
+                            assignment.id,
+                            'linkIds',
+                            linkIds.filter((id) => id !== website.id),
+                          )
+                        }
+                      >
+                        x
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Type">
+                <NativeSelect
+                  value={assignment.type}
+                  onChange={(event) =>
+                    updateAssignment(
+                      assignment.id,
+                      'type',
+                      event.target.value as AssignmentType,
+                    )
+                  }
+                >
+                  {assignmentTypes.map((type) => (
+                    <NativeSelectOption key={type} value={type}>
+                      {type}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field label="Status">
+                <NativeSelect
+                  value={assignment.status}
+                  onChange={(event) => {
+                    const nextStatus = event.target.value as Status;
+                    updateAssignment(assignment.id, 'status', nextStatus);
+                    updateAssignment(
+                      assignment.id,
+                      'submitted',
+                      nextStatus === 'Done',
+                    );
+                  }}
+                >
+                  {statuses.map((status) => (
+                    <NativeSelectOption key={status} value={status}>
+                      {status}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field label="Week">
+                <TextInput value={week} readOnly className="bg-blue-50" />
+              </Field>
+              <Field label="Due Date">
+                <TextInput
+                  type="date"
+                  value={assignment.dueDate}
+                  onChange={(event) =>
+                    updateAssignment(
+                      assignment.id,
+                      'dueDate',
+                      event.target.value,
+                    )
+                  }
+                />
+              </Field>
+              <Field label="Due Time">
+                <TextInput
+                  type="time"
+                  value={assignment.dueTime ?? ''}
+                  onChange={(event) =>
+                    updateAssignment(
+                      assignment.id,
+                      'dueTime',
+                      event.target.value,
+                    )
+                  }
+                />
+              </Field>
+              <Field label="Weight">
+                <TextInput
+                  type="number"
+                  value={assignment.weight}
+                  onChange={(event) =>
+                    updateAssignment(
+                      assignment.id,
+                      'weight',
+                      numberValue(event.target.value),
+                    )
+                  }
+                />
+              </Field>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function CourseMobileCards({
+  courses,
+  updateCourse,
+  removeCourse,
+}: {
+  courses: Course[];
+  updateCourse: <K extends keyof Course>(
+    id: string,
+    key: K,
+    value: Course[K],
+  ) => void;
+  removeCourse: (id: string) => void;
+}) {
+  return (
+    <div className="grid gap-3">
+      {courses.map((course) => (
+        <article
+          key={course.id}
+          className="grid min-w-0 gap-3 overflow-hidden border-2 border-blue-200 bg-white p-3"
+        >
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <Field label="Course">
+                <TextInput
+                  value={course.name}
+                  onChange={(event) =>
+                    updateCourse(course.id, 'name', event.target.value)
+                  }
+                />
+              </Field>
+            </div>
+            <Button
+              variant="destructive"
+              size="icon"
+              aria-label={`Delete ${course.name}`}
+              onClick={() => removeCourse(course.id)}
+            >
+              <Trash2 />
+            </Button>
+          </div>
+          <CourseColorControls
+            value={course.color}
+            size="sm"
+            presetLimit={3}
+            label={`Set ${course.name || 'course'} color`}
+            onChange={(color) => updateCourse(course.id, 'color', color)}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Code">
+              <TextInput
+                value={course.code}
+                onChange={(event) =>
+                  updateCourse(course.id, 'code', event.target.value)
+                }
+              />
+            </Field>
+            <Field label="Credits">
+              <TextInput
+                type="number"
+                value={course.credits}
+                onChange={(event) =>
+                  updateCourse(
+                    course.id,
+                    'credits',
+                    numberValue(event.target.value),
+                  )
+                }
+              />
+            </Field>
+          </div>
+          <Field label="Room">
+            <TextInput
+              value={course.room}
+              onChange={(event) =>
+                updateCourse(course.id, 'room', event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Instructor">
+            <TextInput
+              value={course.instructor}
+              onChange={(event) =>
+                updateCourse(course.id, 'instructor', event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Email">
+            <TextInput
+              type="email"
+              value={course.email ?? ''}
+              onChange={(event) =>
+                updateCourse(course.id, 'email', event.target.value)
+              }
+            />
+          </Field>
+          <Field label="Section">
+            <TextInput
+              value={course.section ?? ''}
+              onChange={(event) =>
+                updateCourse(course.id, 'section', event.target.value)
+              }
+            />
+          </Field>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ScheduleMobileList({
+  days,
+  blocks,
+  courseById,
+  onDelete,
+}: {
+  days: string[];
+  blocks: ScheduleBlock[];
+  courseById: Map<string, Course>;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="grid gap-3 md:hidden">
+      {days.map((day) => {
+        const dayBlocks = blocks
+          .filter((block) => block.day === day)
+          .sort((first, second) => first.start.localeCompare(second.start));
+        return (
+          <section key={day} className="grid gap-2">
+            <h3 className="border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black text-blue-950">
+              {day}
+            </h3>
+            {dayBlocks.length ? (
+              dayBlocks.map((block) => {
+                const course = courseById.get(block.courseId);
+                return (
+                  <article
+                    key={block.id}
+                    className="grid min-w-0 gap-2 overflow-hidden border-2 border-blue-200 p-3"
+                    style={{ background: course?.color ?? '#dbeafe' }}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h4 className="truncate font-black text-blue-950">
+                          {course?.name ?? 'Course'}
+                        </h4>
+                        <p className="text-sm font-semibold text-blue-950/70">
+                          {formatBlockTimeRange(block)}
+                        </p>
+                        <p className="truncate text-sm text-blue-950/70">
+                          {block.location || course?.room || 'Location'}
+                        </p>
+                        {block.type ? (
+                          <p className="truncate text-xs font-semibold text-blue-950/65">
+                            {block.type}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete schedule block"
+                        onClick={() => onDelete(block.id)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
+              <div className="border-2 border-blue-100 bg-white/70 p-3 text-sm font-semibold text-blue-950/55">
+                No blocks.
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function OfficeHoursMobileList({
+  days,
+  blocks,
+  courseById,
+  onDelete,
+}: {
+  days: string[];
+  blocks: OfficeHourBlock[];
+  courseById: Map<string, Course>;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="grid gap-3 md:hidden">
+      {days.map((day) => {
+        const dayBlocks = blocks
+          .filter((block) => block.day === day)
+          .sort((first, second) => first.start.localeCompare(second.start));
+        return (
+          <section key={day} className="grid gap-2">
+            <h3 className="border-2 border-blue-300 bg-amber-50 p-2 text-center text-sm font-black text-blue-950">
+              {day}
+            </h3>
+            {dayBlocks.length ? (
+              dayBlocks.map((block) => {
+                const course = courseById.get(block.courseId);
+                return (
+                  <article
+                    key={block.id}
+                    className="grid min-w-0 gap-2 overflow-hidden border-2 border-blue-200 p-3"
+                    style={{ background: course?.color ?? '#e9d5ff' }}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-black uppercase text-blue-950/65">
+                          Office Hours
+                        </p>
+                        <h4 className="truncate font-black text-blue-950">
+                          {course?.name ?? 'Course'}
+                        </h4>
+                        <p className="text-sm font-semibold text-blue-950/70">
+                          {formatBlockTimeRange(block)}
+                        </p>
+                        <p className="truncate text-sm text-blue-950/70">
+                          {block.office || 'Office'}
+                        </p>
+                        <p className="truncate text-sm text-blue-950/70">
+                          {block.teacher || course?.instructor || 'Instructor'}
+                        </p>
+                        {block.notes ? (
+                          <p className="text-sm text-blue-950/65">
+                            {block.notes}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete office hours"
+                        onClick={() => onDelete(block.id)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })
+            ) : (
+              <div className="border-2 border-blue-100 bg-white/70 p-3 text-sm font-semibold text-blue-950/55">
+                No office hours.
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
@@ -5891,10 +6672,7 @@ function AssignmentTable({
                 ? `${Math.abs(left)} late`
                 : `${left} days left`;
           return (
-            <TableRow
-              key={assignment.id}
-              className={urgencyClass}
-            >
+            <TableRow key={assignment.id} className={urgencyClass}>
               <TableCell className="align-top py-2">
                 {courseById.get(assignment.courseId)?.name ?? 'Course'}
               </TableCell>
