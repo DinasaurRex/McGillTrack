@@ -52,6 +52,7 @@ type AssignmentType =
   | 'Reading'
   | 'Homework'
   | 'Test'
+  | 'Midterm'
   | 'Final';
 
 type Course = {
@@ -186,6 +187,8 @@ const tabFromPathname = (pathname: string): TrackerTab =>
   trackerTabs.find((tab) => tab.href === pathname)?.value ?? 'overview';
 
 type TrackerData = {
+  termStartDate: string;
+  termEndDate: string;
   courses: Course[];
   assignments: Assignment[];
   schedule: ScheduleBlock[];
@@ -197,6 +200,12 @@ type TrackerData = {
   homework: HomeworkItem[];
   todos: TodoItem[];
 };
+
+type TrackerCollectionKey = {
+  [Key in keyof TrackerData]: TrackerData[Key] extends { id: string }[]
+    ? Key
+    : never;
+}[keyof TrackerData];
 
 type CloudStatus =
   | 'local'
@@ -279,6 +288,7 @@ const assignmentTypes: AssignmentType[] = [
   'Reading',
   'Homework',
   'Test',
+  'Midterm',
   'Final',
 ];
 const weeks = [
@@ -434,6 +444,8 @@ const formatWeekRange = (weekStart: string) =>
   `${formatMonthDay(weekStart)} - ${formatMonthDay(addIsoDays(weekStart, 4))}`;
 
 const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
+  termStartDate: baseDate,
+  termEndDate: addDays(94, baseDate),
   courses: [
     {
       id: 'course-1',
@@ -699,6 +711,30 @@ const daysLeft = (dueDate: string) => {
   const due = new Date(`${dueDate}T00:00:00`).getTime();
   const today = new Date(`${todayIso()}T00:00:00`).getTime();
   return Math.ceil((due - today) / 86400000);
+};
+
+const daysBetweenIso = (startDate: string, endDate: string) => {
+  const start = parseIsoDate(startDate);
+  const end = parseIsoDate(endDate);
+  if (!start || !end) return null;
+  return Math.floor((end.getTime() - start.getTime()) / 86400000);
+};
+
+const assignmentWeekLabel = (
+  dueDate: string,
+  termStartDate: string,
+  termEndDate: string,
+) => {
+  if (!dueDate || !termStartDate) return 'Week 1';
+
+  const daysFromStart = daysBetweenIso(termStartDate, dueDate);
+  if (daysFromStart === null) return 'Week 1';
+
+  const daysAfterEnd = termEndDate ? daysBetweenIso(termEndDate, dueDate) : null;
+  if (daysAfterEnd !== null && daysAfterEnd > 0) return 'Finals Week';
+  if (daysFromStart < 0) return 'Before Classes';
+
+  return `Week ${Math.floor(daysFromStart / 7) + 1}`;
 };
 
 const hoursBetween = (start: string, end: string) => {
@@ -1740,15 +1776,28 @@ const readExcelHours = (workbook: ExcelWorkbook) => {
 };
 
 const parseAnnabelleExcelWorkbook = (workbook: ExcelWorkbook): ExcelImportResult => {
+  const termStartDate = initialTemplateDate;
+  const termEndDate = addDays(94, termStartDate);
   const courses = readExcelSetupCourses(workbook);
   enrichCoursesFromClassOutline(workbook, courses);
 
-  const assignments = readExcelAssignments(workbook, courses);
+  const assignments = readExcelAssignments(workbook, courses).map(
+    (assignment) => ({
+      ...assignment,
+      week: assignmentWeekLabel(
+        assignment.dueDate,
+        termStartDate,
+        termEndDate,
+      ),
+    }),
+  );
   const schedule = readExcelSchedule(workbook, courses);
   const hours = readExcelHours(workbook);
 
   return {
     data: {
+      termStartDate,
+      termEndDate,
       courses,
       assignments,
       schedule,
@@ -1791,18 +1840,34 @@ const normalizeNotes = (notes = defaultData.notes): NoteEntry[] =>
     height: note.height ?? undefined,
   }));
 
-const normalizeData = (incoming: Partial<TrackerData>): TrackerData => ({
-  courses: incoming.courses ?? defaultData.courses,
-  assignments: normalizeAssignments(incoming.assignments),
-  schedule: normalizeSchedule(incoming.schedule),
-  officeHours: incoming.officeHours ?? defaultData.officeHours,
-  notes: normalizeNotes(incoming.notes),
-  hours: incoming.hours ?? defaultData.hours,
-  websites: incoming.websites ?? defaultData.websites,
-  shopping: incoming.shopping ?? defaultData.shopping,
-  homework: incoming.homework ?? defaultData.homework,
-  todos: incoming.todos ?? defaultData.todos,
-});
+const normalizeData = (incoming: Partial<TrackerData>): TrackerData => {
+  const termStartDate = incoming.termStartDate ?? defaultData.termStartDate;
+  const termEndDate = incoming.termEndDate ?? defaultData.termEndDate;
+
+  return {
+    termStartDate,
+    termEndDate,
+    courses: incoming.courses ?? defaultData.courses,
+    assignments: normalizeAssignments(incoming.assignments).map(
+      (assignment) => ({
+        ...assignment,
+        week: assignmentWeekLabel(
+          assignment.dueDate,
+          termStartDate,
+          termEndDate,
+        ),
+      }),
+    ),
+    schedule: normalizeSchedule(incoming.schedule),
+    officeHours: incoming.officeHours ?? defaultData.officeHours,
+    notes: normalizeNotes(incoming.notes),
+    hours: incoming.hours ?? defaultData.hours,
+    websites: incoming.websites ?? defaultData.websites,
+    shopping: incoming.shopping ?? defaultData.shopping,
+    homework: incoming.homework ?? defaultData.homework,
+    todos: incoming.todos ?? defaultData.todos,
+  };
+};
 
 function Field({
   label,
@@ -1959,6 +2024,7 @@ function StickyNoteCard({
   note,
   courseName,
   onResize,
+  onUpdate,
   onDelete,
 }: {
   note: NoteEntry;
@@ -1968,6 +2034,11 @@ function StickyNoteCard({
     width: number,
     height: number,
     snapHeight: number | null,
+  ) => void;
+  onUpdate: <K extends keyof NoteEntry>(
+    id: string,
+    key: K,
+    value: NoteEntry[K],
   ) => void;
   onDelete: (id: string) => void;
 }) {
@@ -2033,7 +2104,7 @@ function StickyNoteCard({
       ref={noteRef}
       data-note-card
       data-note-id={note.id}
-      className="pixel-panel grid min-h-[180px] min-w-[260px] max-w-full resize overflow-auto p-4"
+      className="pixel-panel grid min-h-[180px] min-w-[260px] max-w-full resize grid-rows-[auto_1fr] overflow-auto p-4"
       style={{
         width: note.width ?? 360,
         height: note.height ?? 260,
@@ -2044,9 +2115,15 @@ function StickyNoteCard({
           <p className="text-[13px] font-bold uppercase text-blue-950/70">
             {courseName}
           </p>
-          <h3 className="text-xl font-black leading-tight">
-            {note.title || 'Untitled note'}
-          </h3>
+          <input
+            value={note.title}
+            onChange={(event) =>
+              onUpdate(note.id, 'title', event.target.value)
+            }
+            className="w-full min-w-0 bg-transparent text-xl leading-tight font-black text-blue-950 outline-none placeholder:text-blue-950/35 focus:bg-blue-50/60"
+            placeholder="Untitled note"
+            aria-label="Note title"
+          />
         </div>
         <Button
           variant="ghost"
@@ -2057,9 +2134,13 @@ function StickyNoteCard({
           <Trash2 />
         </Button>
       </div>
-      <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-blue-950/75">
-        {note.body || 'No note text yet.'}
-      </p>
+      <textarea
+        value={note.body}
+        onChange={(event) => onUpdate(note.id, 'body', event.target.value)}
+        className="mt-3 min-h-0 w-full resize-none bg-transparent text-base leading-7 whitespace-pre-wrap text-blue-950/75 outline-none placeholder:text-blue-950/35 focus:bg-blue-50/60"
+        placeholder="No note text yet."
+        aria-label="Note body"
+      />
     </article>
   );
 }
@@ -2443,12 +2524,17 @@ export default function Home() {
     }).length;
     const dueThisWeek = data.assignments.filter(
       (assignment) =>
-        assignment.week === currentWeek(data.assignments) &&
+        assignmentWeekLabel(
+          assignment.dueDate,
+          data.termStartDate,
+          data.termEndDate,
+        ) ===
+          assignmentWeekLabel(todayIso(), data.termStartDate, data.termEndDate) &&
         assignment.status !== 'Done' &&
         !assignment.submitted,
     ).length;
     return { total, done, overdue, dueThisWeek };
-  }, [data.assignments]);
+  }, [data.assignments, data.termEndDate, data.termStartDate]);
 
   const gradedAssignments = data.assignments.filter(
     (assignment) =>
@@ -2529,10 +2615,40 @@ export default function Home() {
   ) => {
     setData((current) => ({
       ...current,
-      assignments: current.assignments.map((assignment) =>
-        assignment.id === id ? { ...assignment, [key]: value } : assignment,
-      ),
+      assignments: current.assignments.map((assignment) => {
+        if (assignment.id !== id) return assignment;
+
+        const updatedAssignment = { ...assignment, [key]: value };
+        if (key !== 'dueDate') return updatedAssignment;
+
+        return {
+          ...updatedAssignment,
+          week: assignmentWeekLabel(
+            String(value),
+            current.termStartDate,
+            current.termEndDate,
+          ),
+        };
+      }),
     }));
+  };
+
+  const updateTermDate = (key: 'termStartDate' | 'termEndDate', value: string) => {
+    setData((current) => {
+      const next = { ...current, [key]: value };
+
+      return {
+        ...next,
+        assignments: next.assignments.map((assignment) => ({
+          ...assignment,
+          week: assignmentWeekLabel(
+            assignment.dueDate,
+            next.termStartDate,
+            next.termEndDate,
+          ),
+        })),
+      };
+    });
   };
 
   const updateCourse = <K extends keyof Course>(
@@ -2595,6 +2711,19 @@ export default function Home() {
     setData((current) => ({
       ...current,
       todos: current.todos.map((item) =>
+        item.id === id ? { ...item, [key]: value } : item,
+      ),
+    }));
+  };
+
+  const updateNote = <K extends keyof NoteEntry>(
+    id: string,
+    key: K,
+    value: NoteEntry[K],
+  ) => {
+    setData((current) => ({
+      ...current,
+      notes: current.notes.map((item) =>
         item.id === id ? { ...item, [key]: value } : item,
       ),
     }));
@@ -2722,7 +2851,15 @@ export default function Home() {
     setData((current) => ({
       ...current,
       assignments: [
-        { ...assignmentDraft, id: makeId() },
+        {
+          ...assignmentDraft,
+          id: makeId(),
+          week: assignmentWeekLabel(
+            assignmentDraft.dueDate,
+            current.termStartDate,
+            current.termEndDate,
+          ),
+        },
         ...current.assignments,
       ],
     }));
@@ -2884,11 +3021,15 @@ export default function Home() {
     setTodoDraft(blankTodoItem());
   };
 
-  const removeItem = (collection: keyof TrackerData, id: string) => {
-    setData((current) => ({
-      ...current,
-      [collection]: current[collection].filter((item) => item.id !== id),
-    }));
+  const removeItem = (collection: TrackerCollectionKey, id: string) => {
+    setData((current) => {
+      const items = current[collection] as { id: string }[];
+
+      return {
+        ...current,
+        [collection]: items.filter((item) => item.id !== id),
+      };
+    });
   };
 
   const resetTemplate = () => {
@@ -3344,6 +3485,8 @@ export default function Home() {
               <AssignmentPreviewList
                 assignments={upcomingAssignments}
                 courseById={courseById}
+                termStartDate={data.termStartDate}
+                termEndDate={data.termEndDate}
               />
             </section>
 
@@ -3634,6 +3777,38 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="assignments" className="grid gap-4">
+            <section className="pixel-panel grid gap-3 p-4 md:grid-cols-[1fr_1fr_auto]">
+              <Field label="First Day of Classes">
+                <TextInput
+                  type="date"
+                  value={data.termStartDate}
+                  onChange={(event) =>
+                    updateTermDate('termStartDate', event.target.value)
+                  }
+                />
+              </Field>
+              <Field label="Last Day of Classes">
+                <TextInput
+                  type="date"
+                  value={data.termEndDate}
+                  onChange={(event) =>
+                    updateTermDate('termEndDate', event.target.value)
+                  }
+                />
+              </Field>
+              <div className="grid gap-1.5">
+                <p className="text-xs font-semibold uppercase text-blue-950/65">
+                  Current Week
+                </p>
+                <div className="min-w-36 border-2 border-blue-200 bg-blue-50 px-3 py-2 text-sm font-black text-blue-950">
+                  {assignmentWeekLabel(
+                    todayIso(),
+                    data.termStartDate,
+                    data.termEndDate,
+                  )}
+                </div>
+              </div>
+            </section>
             <section className="pixel-panel grid gap-3 p-4 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.65fr_0.65fr_auto]">
               <Field label="Course">
                 <CourseSelect
@@ -3722,6 +3897,8 @@ export default function Home() {
               <AssignmentTable
                 assignments={data.assignments}
                 courseById={courseById}
+                termStartDate={data.termStartDate}
+                termEndDate={data.termEndDate}
                 updateAssignment={updateAssignment}
                 removeAssignment={(id) => removeItem('assignments', id)}
               />
@@ -4924,6 +5101,7 @@ export default function Home() {
                     note={note}
                     courseName={courseById.get(note.courseId)?.name ?? 'General'}
                     onResize={saveNoteSize}
+                    onUpdate={updateNote}
                     onDelete={(id) => removeItem('notes', id)}
                   />
                 ))}
@@ -5054,18 +5232,6 @@ function ClipboardIcon() {
   return <BarChart3 className="size-5" />;
 }
 
-function currentWeek(assignments: Assignment[]) {
-  const upcoming = assignments
-    .filter((assignment) => {
-      const left = daysLeft(assignment.dueDate);
-      return left !== null && left >= 0;
-    })
-    .sort(
-      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
-    )[0];
-  return upcoming?.week ?? 'Week 1';
-}
-
 function CourseSelect({
   courses,
   value,
@@ -5116,9 +5282,13 @@ function CourseSelect({
 function AssignmentPreviewList({
   assignments,
   courseById,
+  termStartDate,
+  termEndDate,
 }: {
   assignments: Assignment[];
   courseById: Map<string, Course>;
+  termStartDate: string;
+  termEndDate: string;
 }) {
   if (assignments.length === 0) {
     return (
@@ -5162,7 +5332,11 @@ function AssignmentPreviewList({
                 {dueTime ? `, ${dueTime}` : ''}
               </span>
               <span className="border border-blue-200 bg-white px-2 py-0.5">
-                {assignment.week}
+                {assignmentWeekLabel(
+                  assignment.dueDate,
+                  termStartDate,
+                  termEndDate,
+                )}
               </span>
               <span
                 className={`border px-2 py-0.5 ${
@@ -5241,11 +5415,15 @@ function TodayClassList({
 function AssignmentTable({
   assignments,
   courseById,
+  termStartDate,
+  termEndDate,
   updateAssignment,
   removeAssignment,
 }: {
   assignments: Assignment[];
   courseById: Map<string, Course>;
+  termStartDate: string;
+  termEndDate: string;
   updateAssignment: <K extends keyof Assignment>(
     id: string,
     key: K,
@@ -5273,6 +5451,11 @@ function AssignmentTable({
       <TableBody>
         {assignments.map((assignment) => {
           const left = daysLeft(assignment.dueDate);
+          const week = assignmentWeekLabel(
+            assignment.dueDate,
+            termStartDate,
+            termEndDate,
+          );
           const overdue =
             left !== null &&
             left < 0 &&
@@ -5353,19 +5536,9 @@ function AssignmentTable({
                 </NativeSelect>
               </TableCell>
               <TableCell>
-                <NativeSelect
-                  value={assignment.week}
-                  onChange={(event) =>
-                    updateAssignment(assignment.id, 'week', event.target.value)
-                  }
-                  className="w-32"
-                >
-                  {weeks.map((week) => (
-                    <NativeSelectOption key={week} value={week}>
-                      {week}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
+                <span className="inline-flex min-w-28 justify-center border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-black text-blue-950/75">
+                  {week}
+                </span>
               </TableCell>
               <TableCell>
                 <TextInput
