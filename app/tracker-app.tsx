@@ -2014,7 +2014,7 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`h-9 min-w-0 border-2 border-blue-200 bg-white px-3 text-sm shadow-[3px_3px_0_#fef3c7] outline-none transition focus:border-blue-500 ${props.className ?? ''}`}
+      className={`h-10 min-w-0 border-2 border-blue-200 bg-white px-3 text-sm shadow-[3px_3px_0_#fef3c7] outline-none transition focus:border-blue-500 xl:h-9 ${props.className ?? ''}`}
     />
   );
 }
@@ -3426,7 +3426,7 @@ export default function Home() {
 
   return (
     <main className="min-h-[calc(100vh+8rem)] bg-[var(--background)] text-blue-950">
-      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 pt-4 pb-32 sm:px-6 sm:pb-40 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 pt-4 pb-32 sm:px-6 sm:pb-40 lg:gap-5 xl:px-8">
         <header className="pixel-panel grid gap-5 p-4 xl:grid-cols-[1fr_auto_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-4">
             <div className="grid size-12 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[4px_4px_0_#dbeafe]">
@@ -3493,7 +3493,7 @@ export default function Home() {
               onChange={importData}
             />
           </div>
-          <div className="grid min-h-[112px] w-full max-w-[420px] gap-2 border-2 border-blue-300 bg-white/75 p-3 shadow-[3px_3px_0_#bfdbfe] xl:w-[420px]">
+          <div className="grid min-h-[112px] w-full gap-2 border-2 border-blue-300 bg-white/75 p-3 shadow-[3px_3px_0_#bfdbfe] xl:w-[420px] xl:max-w-[420px]">
             <div className="flex items-center justify-between gap-3">
               <p className="truncate text-xs font-black uppercase text-blue-950">
                 {user?.email ?? 'Cloud Account'}
@@ -3580,7 +3580,7 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
           <MiniStat
             label="Assignments"
             value={`${assignmentMetrics.done}/${assignmentMetrics.total}`}
@@ -3618,7 +3618,7 @@ export default function Home() {
                   data-slot="tabs-trigger"
                   data-active={activeTab === tab.value ? '' : undefined}
                   aria-current={activeTab === tab.value ? 'page' : undefined}
-                  className="relative inline-flex items-center justify-center gap-1.5 border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring data-active:text-foreground"
+                  className="relative inline-flex min-h-9 items-center justify-center gap-1.5 border border-transparent px-2.5 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring data-active:text-foreground xl:min-h-0 xl:px-1.5 xl:py-0.5"
                 >
                   {tab.label}
                 </Link>
@@ -3628,7 +3628,7 @@ export default function Home() {
 
           <TabsContent
             value="overview"
-            className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]"
+            className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr] xl:grid-cols-[0.8fr_1.2fr]"
           >
             <section className="pixel-panel p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -3646,7 +3646,7 @@ export default function Home() {
                 value={completionRate * 100}
                 className="mb-5 h-3 border border-blue-300 bg-blue-50"
               />
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {statuses.map((status) => (
                   <div
                     key={status}
@@ -4040,7 +4040,7 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="assignments" className="grid gap-4">
-            <section className="pixel-panel grid gap-3 p-4 md:grid-cols-[1fr_1fr_auto]">
+            <section className="pixel-panel grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_auto]">
               <Field label="First Day of Classes">
                 <TextInput
                   type="date"
@@ -4059,7 +4059,7 @@ export default function Home() {
                   }
                 />
               </Field>
-              <div className="grid gap-1.5">
+              <div className="grid gap-1.5 md:col-span-2 xl:col-span-1">
                 <p className="text-xs font-semibold uppercase text-blue-950/65">
                   Current Week
                 </p>
@@ -4072,7 +4072,7 @@ export default function Home() {
                 </div>
               </div>
             </section>
-            <section className="pixel-panel grid gap-3 p-4 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.65fr_0.65fr_auto]">
+            <section className="pixel-panel grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_0.65fr_0.65fr_auto]">
               <Field label="Course">
                 <CourseSelect
                   courses={data.courses}
@@ -4150,7 +4150,7 @@ export default function Home() {
                 />
               </Field>
               <div className="flex items-end">
-                <Button onClick={addAssignment} className="h-9 w-full">
+                <Button onClick={addAssignment} className="h-10 w-full xl:h-9">
                   <Plus data-icon="inline-start" />
                   Add
                 </Button>
@@ -4449,9 +4449,9 @@ export default function Home() {
 
           <TabsContent
             value="grades"
-            className="grid gap-4 lg:grid-cols-[1fr_360px]"
+            className="grid gap-4 xl:grid-cols-[1fr_360px]"
           >
-            <section className="pixel-panel p-4">
+            <section className="pixel-panel overflow-x-auto p-4">
               <h2 className="mb-4 text-xl font-black">Gradebook</h2>
               <Table>
                 <TableHeader>
@@ -4736,7 +4736,7 @@ export default function Home() {
                             <button
                               type="button"
                               aria-label={`Adjust ${course?.name ?? 'class'} start time`}
-                              className={`absolute top-0 right-7 left-0 z-10 h-2 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 ${
+                              className={`absolute top-0 right-7 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
                                 resizingScheduleBlockId === block.id
                                   ? 'bg-blue-300/40'
                                   : ''
@@ -4749,7 +4749,7 @@ export default function Home() {
                             <button
                               type="button"
                               aria-label={`Adjust ${course?.name ?? 'class'} end time`}
-                              className={`absolute right-0 bottom-0 left-0 z-10 h-2 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 ${
+                              className={`absolute right-0 bottom-0 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
                                 resizingScheduleBlockId === block.id
                                   ? 'bg-blue-300/40'
                                   : ''
@@ -4988,7 +4988,7 @@ export default function Home() {
                             <button
                               type="button"
                               aria-label={`Adjust ${course?.name ?? 'office hours'} start time`}
-                              className={`absolute top-0 right-7 left-0 z-10 h-2 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 ${
+                              className={`absolute top-0 right-7 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
                                 resizingScheduleBlockId === block.id
                                   ? 'bg-blue-300/40'
                                   : ''
@@ -5006,7 +5006,7 @@ export default function Home() {
                             <button
                               type="button"
                               aria-label={`Adjust ${course?.name ?? 'office hours'} end time`}
-                              className={`absolute right-0 bottom-0 left-0 z-10 h-2 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 ${
+                              className={`absolute right-0 bottom-0 left-0 z-10 h-3 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 xl:h-2 ${
                                 resizingScheduleBlockId === block.id
                                   ? 'bg-blue-300/40'
                                   : ''
