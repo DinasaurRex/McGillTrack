@@ -780,6 +780,15 @@ const snapToFiveMinutes = (minutes: number) => Math.round(minutes / 5) * 5;
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+const noteMinWidth = 260;
+const noteMaxWidth = 720;
+const noteMinHeight = 180;
+const noteMaxHeight = 620;
+const noteDefaultWidth = 360;
+const noteDefaultHeight = 260;
+const noteLayoutGap = 16;
+const noteBoardFallbackWidth = 1120;
+
 type PackedNoteLayout = {
   note: NoteEntry;
   x: number;
@@ -787,14 +796,6 @@ type PackedNoteLayout = {
   width: number;
   height: number;
 };
-
-const noteLayoutGap = 16;
-const noteMinWidth = 260;
-const noteMaxWidth = 720;
-const noteMinHeight = 180;
-const noteMaxHeight = 620;
-const noteDefaultWidth = 360;
-const noteDefaultHeight = 260;
 
 const noteRectsOverlap = (
   first: Omit<PackedNoteLayout, 'note'>,
@@ -806,7 +807,10 @@ const noteRectsOverlap = (
   first.y + first.height + noteLayoutGap > second.y;
 
 const packNoteLayouts = (notes: NoteEntry[], containerWidth: number) => {
-  const availableWidth = Math.max(containerWidth, noteMinWidth);
+  const availableWidth = Math.max(
+    containerWidth || noteBoardFallbackWidth,
+    noteMinWidth,
+  );
   const placed: PackedNoteLayout[] = [];
 
   notes.forEach((note) => {
@@ -820,7 +824,7 @@ const packNoteLayouts = (notes: NoteEntry[], containerWidth: number) => {
       noteMinHeight,
       noteMaxHeight,
     );
-    const candidateXs = new Set([0]);
+    const candidateXs = new Set<number>([0]);
 
     placed.forEach((layout) => {
       candidateXs.add(layout.x);
@@ -831,17 +835,19 @@ const packNoteLayouts = (notes: NoteEntry[], containerWidth: number) => {
     const xPositions = [...candidateXs]
       .filter((x) => x >= 0 && x + width <= availableWidth)
       .sort((first, second) => first - second);
-    let bestX = 0;
-    let bestY = 0;
 
-    xPositions.forEach((x) => {
+    const candidates = xPositions.length ? xPositions : [0];
+    let bestX = candidates[0];
+    let bestY = Number.POSITIVE_INFINITY;
+
+    candidates.forEach((x) => {
       let y = 0;
       let blockers = placed.filter((layout) =>
         noteRectsOverlap({ x, y, width, height }, layout),
       );
 
       while (blockers.length > 0) {
-        y = Math.max(
+        y = Math.min(
           ...blockers.map((layout) => layout.y + layout.height + noteLayoutGap),
         );
         blockers = placed.filter((layout) =>
@@ -849,7 +855,7 @@ const packNoteLayouts = (notes: NoteEntry[], containerWidth: number) => {
         );
       }
 
-      if (placed.length === 0 || y < bestY || (y === bestY && x < bestX)) {
+      if (y < bestY || (y === bestY && x < bestX)) {
         bestX = x;
         bestY = y;
       }
@@ -2198,8 +2204,8 @@ function StickyNoteCard({
       data-note-id={note.id}
       className="pixel-panel grid min-h-[180px] min-w-[260px] max-w-full resize grid-rows-[auto_1fr] overflow-auto p-4"
       style={{
-        width: note.width ?? 360,
-        height: note.height ?? 260,
+        width: note.width ?? noteDefaultWidth,
+        height: note.height ?? noteDefaultHeight,
       }}
     >
       <div className="flex items-start justify-between gap-3">
@@ -2271,6 +2277,7 @@ export default function Home() {
   const dataRef = useRef(defaultData);
   const userRef = useRef<User | null>(null);
   const scheduleResizeRef = useRef<{
+    target: 'schedule' | 'officeHours';
     edge: 'start' | 'end';
     id: string;
     startY: number;
@@ -2288,7 +2295,9 @@ export default function Home() {
   const [weeklyShowOfficeHours, setWeeklyShowOfficeHours] = useState(false);
   const [weeklyShowAssignments, setWeeklyShowAssignments] = useState(true);
   const [resizingScheduleBlockId, setResizingScheduleBlockId] = useState('');
-  const [notesBoardWidth, setNotesBoardWidth] = useState(0);
+  const [notesBoardWidth, setNotesBoardWidth] = useState(
+    noteBoardFallbackWidth,
+  );
   const [storageReady, setStorageReady] = useState(false);
   const [dateLabel, setDateLabel] = useState('Today');
   const [todayDay, setTodayDay] = useState('Monday');
@@ -2343,11 +2352,15 @@ export default function Home() {
   const [todoDraft, setTodoDraft] = useState<TodoItem>(blankTodoItem());
 
   useEffect(() => {
+    if (activeTab !== 'notes') return;
+
     const element = notesBoardRef.current;
     if (!element) return;
 
     const updateWidth = () => {
-      setNotesBoardWidth(Math.floor(element.clientWidth));
+      setNotesBoardWidth(
+        Math.max(noteMinWidth, Math.floor(element.clientWidth)),
+      );
     };
 
     updateWidth();
@@ -2623,6 +2636,7 @@ export default function Home() {
     () => new Map(data.courses.map((course) => [course.id, course])),
     [data.courses],
   );
+  const selectedOfficeHourCourse = courseById.get(officeHourDraft.courseId);
 
   const assignmentMetrics = useMemo(() => {
     const total = data.assignments.length;
@@ -2855,8 +2869,16 @@ export default function Home() {
 
   const saveNoteSize = useCallback(
     (id: string, width: number, height: number, snapHeight: number | null) => {
-      const nextWidth = clampNumber(Math.round(width), 260, 720);
-      const nextHeight = clampNumber(Math.round(snapHeight ?? height), 180, 620);
+      const nextWidth = clampNumber(
+        Math.round(width),
+        noteMinWidth,
+        noteMaxWidth,
+      );
+      const nextHeight = clampNumber(
+        Math.round(snapHeight ?? height),
+        noteMinHeight,
+        noteMaxHeight,
+      );
 
       setData((current) => {
         let changed = false;
@@ -2880,22 +2902,33 @@ export default function Home() {
     [],
   );
 
-  const updateScheduleBlockTime = (
+  const updateCalendarBlockTime = (
+    target: 'schedule' | 'officeHours',
     id: string,
-    updates: Pick<ScheduleBlock, 'start' | 'end'>,
+    updates: Pick<ScheduleBlock | OfficeHourBlock, 'start' | 'end'>,
   ) => {
-    setData((current) => ({
-      ...current,
-      schedule: current.schedule.map((block) =>
-        block.id === id ? { ...block, ...updates } : block,
-      ),
-    }));
+    setData((current) =>
+      target === 'schedule'
+        ? {
+            ...current,
+            schedule: current.schedule.map((block) =>
+              block.id === id ? { ...block, ...updates } : block,
+            ),
+          }
+        : {
+            ...current,
+            officeHours: current.officeHours.map((block) =>
+              block.id === id ? { ...block, ...updates } : block,
+            ),
+          },
+    );
   };
 
   const startScheduleBlockResize = (
     event: React.PointerEvent<HTMLButtonElement>,
     edge: 'start' | 'end',
-    block: Pick<ScheduleBlock, 'id' | 'start' | 'end'>,
+    block: Pick<ScheduleBlock | OfficeHourBlock, 'id' | 'start' | 'end'>,
+    target: 'schedule' | 'officeHours' = 'schedule',
   ) => {
     if (event.button !== 0) return;
 
@@ -2915,6 +2948,7 @@ export default function Home() {
     );
 
     scheduleResizeRef.current = {
+      target,
       edge,
       id: block.id,
       startY: event.clientY,
@@ -2938,7 +2972,7 @@ export default function Home() {
           resize.startEndMinutes - 5,
         );
 
-        updateScheduleBlockTime(resize.id, {
+        updateCalendarBlockTime(resize.target, resize.id, {
           start: minutesToTime(nextStart),
           end: minutesToTime(resize.startEndMinutes),
         });
@@ -2951,7 +2985,7 @@ export default function Home() {
         scheduleEndMinutes,
       );
 
-      updateScheduleBlockTime(resize.id, {
+      updateCalendarBlockTime(resize.target, resize.id, {
         start: minutesToTime(resize.startMinutes),
         end: minutesToTime(nextEnd),
       });
@@ -3887,7 +3921,7 @@ export default function Home() {
                                 return (
                                   <div
                                     key={`office-${block.id}`}
-                                    className={`absolute right-2 left-6 overflow-hidden border-2 border-blue-300 px-2 text-center shadow-[3px_3px_0_rgba(251,191,36,0.35)] ${
+                                    className={`absolute inset-x-1 overflow-hidden border-2 border-blue-200 px-2 text-center ${
                                       compactBlock ? 'py-1' : 'py-1.5'
                                     }`}
                                     style={{
@@ -4754,6 +4788,7 @@ export default function Home() {
               </Field>
               <Field label="Teacher">
                 <TextInput
+                  list="office-hour-teacher-options"
                   value={officeHourDraft.teacher}
                   onChange={(event) =>
                     setOfficeHourDraft({
@@ -4761,8 +4796,24 @@ export default function Home() {
                       teacher: event.target.value,
                     })
                   }
-                  placeholder="Instructor or TA"
+                  placeholder="Instructor, TA, or other name"
                 />
+                <datalist id="office-hour-teacher-options">
+                  {selectedOfficeHourCourse?.instructor ? (
+                    <option
+                      label={selectedOfficeHourCourse.instructor}
+                      value={selectedOfficeHourCourse.instructor}
+                    >
+                      {selectedOfficeHourCourse.instructor}
+                    </option>
+                  ) : null}
+                  <option label="TA" value="TA">
+                    TA
+                  </option>
+                  <option label="Other" value="Other">
+                    Other
+                  </option>
+                </datalist>
               </Field>
               <Field label="Office">
                 <TextInput
@@ -4892,6 +4943,42 @@ export default function Home() {
                             }}
                             title={`${course?.name ?? 'Course'} · ${block.start} - ${block.end} · ${block.office || 'Office'} · ${block.teacher || course?.instructor || 'Professor'}`}
                           >
+                            <button
+                              type="button"
+                              aria-label={`Adjust ${course?.name ?? 'office hours'} start time`}
+                              className={`absolute top-0 right-7 left-0 z-10 h-2 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 ${
+                                resizingScheduleBlockId === block.id
+                                  ? 'bg-blue-300/40'
+                                  : ''
+                              }`}
+                              title="Drag to adjust start time"
+                              onPointerDown={(event) =>
+                                startScheduleBlockResize(
+                                  event,
+                                  'start',
+                                  block,
+                                  'officeHours',
+                                )
+                              }
+                            />
+                            <button
+                              type="button"
+                              aria-label={`Adjust ${course?.name ?? 'office hours'} end time`}
+                              className={`absolute right-0 bottom-0 left-0 z-10 h-2 cursor-ns-resize touch-none bg-transparent transition group-hover:bg-blue-300/30 ${
+                                resizingScheduleBlockId === block.id
+                                  ? 'bg-blue-300/40'
+                                  : ''
+                              }`}
+                              title="Drag to adjust end time"
+                              onPointerDown={(event) =>
+                                startScheduleBlockResize(
+                                  event,
+                                  'end',
+                                  block,
+                                  'officeHours',
+                                )
+                              }
+                            />
                             <div className="flex h-full min-h-0 items-center justify-center">
                               <div className="min-w-0 max-w-full">
                                 <p
@@ -5282,14 +5369,14 @@ export default function Home() {
             </section>
             <section
               ref={notesBoardRef}
-              className="relative min-h-[260px]"
+              className="relative min-h-[260px] w-full"
               style={{ height: packedNotes.height }}
             >
-              {packedNotes.items.map(({ note, x, y }) => (
+              {packedNotes.items.map(({ note, x, y, width, height }) => (
                 <div
                   key={note.id}
                   className="absolute transition-[top,left] duration-150"
-                  style={{ left: x, top: y }}
+                  style={{ left: x, top: y, width, height }}
                 >
                   <StickyNoteCard
                     note={note}
