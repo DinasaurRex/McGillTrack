@@ -22,6 +22,8 @@ import {
   ShoppingCart,
   Trash2,
   Upload,
+  UserPlus,
+  Users,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -162,6 +164,7 @@ type TodoItem = {
 type TrackerTab =
   | 'overview'
   | 'weekly'
+  | 'friends'
   | 'assignments'
   | 'courses'
   | 'grades'
@@ -175,6 +178,7 @@ type TrackerTab =
 const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'overview', label: 'Overview', href: '/' },
   { value: 'weekly', label: 'Weekly', href: '/weekly' },
+  { value: 'friends', label: 'Friends', href: '/friends' },
   { value: 'assignments', label: 'Assignments', href: '/assignments' },
   { value: 'courses', label: 'Courses', href: '/courses' },
   { value: 'grades', label: 'Grades', href: '/grades' },
@@ -920,6 +924,83 @@ const formatBlockTimeRange = (
   return `${formatDisplayTime(minutesToTime(start))} - ${formatDisplayTime(
     minutesToTime(end),
   )}`;
+};
+
+type AvailabilityWindow = {
+  day: string;
+  start: string;
+  end: string;
+};
+
+const buildAvailabilityWindows = (
+  schedule: ScheduleBlock[],
+  officeHours: OfficeHourBlock[],
+  minMinutes = 45,
+): AvailabilityWindow[] =>
+  days.flatMap((day) => {
+    const busyWindows = [...schedule, ...officeHours]
+      .filter((block) => block.day === day)
+      .map((block) => calendarBlockMinutes(block))
+      .sort((first, second) => first.start - second.start);
+
+    const mergedBusy = busyWindows.reduce<{ start: number; end: number }[]>(
+      (merged, window) => {
+        const previous = merged.at(-1);
+
+        if (!previous || window.start > previous.end) {
+          merged.push({ ...window });
+          return merged;
+        }
+
+        previous.end = Math.max(previous.end, window.end);
+        return merged;
+      },
+      [],
+    );
+
+    const freeWindows: AvailabilityWindow[] = [];
+    let cursor = scheduleStartMinutes;
+
+    mergedBusy.forEach((window) => {
+      if (window.start - cursor >= minMinutes) {
+        freeWindows.push({
+          day,
+          start: minutesToTime(cursor),
+          end: minutesToTime(window.start),
+        });
+      }
+      cursor = Math.max(cursor, window.end);
+    });
+
+    if (scheduleEndMinutes - cursor >= minMinutes) {
+      freeWindows.push({
+        day,
+        start: minutesToTime(cursor),
+        end: minutesToTime(scheduleEndMinutes),
+      });
+    }
+
+    return freeWindows;
+  });
+
+const fallbackBreakWindows: AvailabilityWindow[] = [
+  { day: 'Monday', start: '10:30', end: '12:00' },
+  { day: 'Tuesday', start: '12:00', end: '14:00' },
+  { day: 'Wednesday', start: '11:30', end: '13:30' },
+  { day: 'Thursday', start: '10:00', end: '11:30' },
+  { day: 'Friday', start: '12:30', end: '14:30' },
+];
+
+const formatAvailabilityRange = (window: AvailabilityWindow) =>
+  `${formatDisplayTime(window.start)} - ${formatDisplayTime(window.end)}`;
+
+const formatAvailabilityDuration = (window: AvailabilityWindow) => {
+  const minutes = timeToMinutes(window.end) - timeToMinutes(window.start);
+  if (minutes < 60) return `${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours} hr ${remainder} min` : `${hours} hr`;
 };
 
 const scheduleBlockLayout = (
@@ -2814,6 +2895,10 @@ export default function Home() {
       ),
     [data.assignments, weeklyDateSet],
   );
+  const friendBreakWindows = useMemo(() => {
+    const windows = buildAvailabilityWindows(data.schedule, data.officeHours);
+    return (windows.length ? windows : fallbackBreakWindows).slice(0, 5);
+  }, [data.officeHours, data.schedule]);
   const sortedNotes = useMemo(
     () => [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)),
     [data.notes],
@@ -4094,6 +4179,155 @@ export default function Home() {
                     );
                   })}
                 </div>
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent
+            value="friends"
+            className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]"
+          >
+            <section className="pixel-panel min-w-0 p-3 sm:p-4 xl:col-span-2">
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-black">Friends & Teammates</h2>
+                    <span className="border-2 border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-black uppercase text-blue-950/70">
+                      In progress
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold text-blue-950/70">
+                    Find overlapping breaks with friends or teammates!
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2 border-2 border-blue-200 bg-blue-50 px-3 py-2 text-sm font-black text-blue-950/75">
+                  <Users className="size-4" />
+                  Free/busy preview
+                </div>
+              </div>
+            </section>
+
+            <section className="pixel-panel grid min-w-0 gap-4 p-3 sm:p-4">
+              <div className="flex items-center gap-3">
+                <UserPlus className="size-5 text-blue-950/70" />
+                <h3 className="text-lg font-black">Add People</h3>
+              </div>
+              <div className="grid min-w-0 gap-3">
+                <Field label="Friend email or invite code">
+                  <TextInput placeholder="name@email.com or ABC123" />
+                </Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button disabled>
+                    <Plus data-icon="inline-start" />
+                    Add friend
+                  </Button>
+                  <Button variant="outline" disabled>
+                    Create team
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-2 border-2 border-blue-200 bg-white p-3">
+                <p className="text-sm font-black text-blue-950">
+                  Sharing plan
+                </p>
+                <p className="text-sm text-blue-950/65">
+                  Friends and teams should start with free/busy only. Course
+                  names and locations can be opt-in later.
+                </p>
+              </div>
+              <div className="grid gap-2">
+                {[
+                  ['You', 'Your McGillTrack schedule', '#dbeafe'],
+                  ['Maya', 'Friend preview', '#fbcfe8'],
+                  ['Noah', 'Project teammate', '#fef3c7'],
+                  ['Design Team', 'Group preview', '#e9d5ff'],
+                ].map(([name, label, color]) => (
+                  <div
+                    key={name}
+                    className="flex min-w-0 items-center gap-3 border-2 border-blue-200 bg-white p-3"
+                  >
+                    <span
+                      className="size-4 shrink-0 border-2 border-blue-400"
+                      style={{ background: color }}
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-blue-950">
+                        {name}
+                      </p>
+                      <p className="truncate text-xs font-semibold text-blue-950/65">
+                        {label}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="pixel-panel grid min-w-0 gap-4 p-3 sm:p-4">
+              <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black">Common Breaks</h3>
+                  <p className="text-sm text-blue-950/65">
+                    Previewing times from your current schedule.
+                  </p>
+                </div>
+                <div className="grid min-w-0 grid-cols-2 gap-2">
+                  <Field label="Minimum">
+                    <NativeSelect defaultValue="45">
+                      <NativeSelectOption value="30">30 min</NativeSelectOption>
+                      <NativeSelectOption value="45">45 min</NativeSelectOption>
+                      <NativeSelectOption value="60">1 hour</NativeSelectOption>
+                    </NativeSelect>
+                  </Field>
+                  <Field label="Group">
+                    <NativeSelect defaultValue="friends">
+                      <NativeSelectOption value="friends">
+                        Friends
+                      </NativeSelectOption>
+                      <NativeSelectOption value="team">Team</NativeSelectOption>
+                    </NativeSelect>
+                  </Field>
+                </div>
+              </div>
+
+              <div className="grid min-w-0 gap-3 md:grid-cols-2">
+                {friendBreakWindows.map((window, index) => {
+                  const people =
+                    index % 2 === 0
+                      ? ['You', 'Maya', 'Noah']
+                      : ['You', 'Maya', 'Design Team'];
+
+                  return (
+                    <article
+                      key={`${window.day}-${window.start}-${window.end}`}
+                      className="grid min-w-0 gap-3 border-2 border-blue-200 bg-white p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-black uppercase text-blue-950/60">
+                            {window.day}
+                          </p>
+                          <h4 className="text-base font-black text-blue-950">
+                            {formatAvailabilityRange(window)}
+                          </h4>
+                        </div>
+                        <span className="shrink-0 border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-950/70">
+                          {formatAvailabilityDuration(window)}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {people.map((person) => (
+                          <span
+                            key={person}
+                            className="border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-950/70"
+                          >
+                            {person}
+                          </span>
+                        ))}
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             </section>
           </TabsContent>
