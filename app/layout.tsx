@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   title: 'McGillTrack',
   description:
     'A private-by-default academic tracker for assignments, grades, schedules, notes, and service hours.',
+  icons: {
+    icon: '/assets/rabbit-cute.png',
+    shortcut: '/assets/rabbit-cute.png',
+    apple: '/assets/rabbit-cute.png',
+  },
 };
 
 export default function RootLayout({
