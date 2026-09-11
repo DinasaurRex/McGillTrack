@@ -17,7 +17,9 @@ import {
   GraduationCap,
   LinkIcon,
   ListChecks,
+  Pause,
   Plus,
+  Play,
   RotateCcw,
   ShoppingCart,
   Trash2,
@@ -173,7 +175,8 @@ type TrackerTab =
   | 'notes'
   | 'hours'
   | 'import'
-  | 'friends';
+  | 'friends'
+  | 'focus';
 
 const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'overview', label: 'Overview', href: '/' },
@@ -188,6 +191,7 @@ const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'hours', label: 'Hours', href: '/hours' },
   { value: 'import', label: 'Import', href: '/import' },
   { value: 'friends', label: 'Friends', href: '/friends' },
+  { value: 'focus', label: 'Focus', href: '/focus' },
 ];
 
 const tabFromPathname = (pathname: string): TrackerTab =>
@@ -316,6 +320,33 @@ const weeks = [
   'Finals Week',
 ];
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+type FocusMode = 'focus' | 'short-break' | 'long-break';
+
+const focusModeOptions: {
+  value: FocusMode;
+  label: string;
+  minutes: number;
+  description: string;
+}[] = [
+  {
+    value: 'focus',
+    label: 'Focus',
+    minutes: 25,
+    description: 'Settle into one task.',
+  },
+  {
+    value: 'short-break',
+    label: 'Short Break',
+    minutes: 5,
+    description: 'Stretch, water, breathe.',
+  },
+  {
+    value: 'long-break',
+    label: 'Long Break',
+    minutes: 15,
+    description: 'A proper reset.',
+  },
+];
 const dayCodeMap: Record<string, string> = {
   M: 'Monday',
   T: 'Tuesday',
@@ -792,6 +823,16 @@ const minutesToTime = (totalMinutes: number) => {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
 
+const formatFocusSeconds = (seconds: number) => {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+
+  return `${String(minutes).padStart(2, '0')}:${String(
+    remainingSeconds,
+  ).padStart(2, '0')}`;
+};
+
 const formatDisplayTime = (time: string) => {
   const [rawHours = '0', rawMinutes = '0'] = time.split(':');
   const hours = Number(rawHours);
@@ -1046,14 +1087,6 @@ const buildAvailabilityWindows = (
 
     return freeWindows;
   });
-
-const fallbackBreakWindows: AvailabilityWindow[] = [
-  { day: 'Monday', start: '10:30', end: '12:00' },
-  { day: 'Tuesday', start: '12:00', end: '14:00' },
-  { day: 'Wednesday', start: '11:30', end: '13:30' },
-  { day: 'Thursday', start: '10:00', end: '11:30' },
-  { day: 'Friday', start: '12:30', end: '14:30' },
-];
 
 const formatAvailabilityRange = (window: AvailabilityWindow) =>
   `${formatDisplayTime(window.start)} - ${formatDisplayTime(window.end)}`;
@@ -2605,6 +2638,13 @@ export default function Home() {
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [teamMemberDraft, setTeamMemberDraft] = useState('');
   const [minimumBreakMinutes, setMinimumBreakMinutes] = useState(45);
+  const [focusMode, setFocusMode] = useState<FocusMode>('focus');
+  const [focusSecondsLeft, setFocusSecondsLeft] = useState(
+    focusModeOptions[0].minutes * 60,
+  );
+  const [focusRunning, setFocusRunning] = useState(false);
+  const [focusCourseId, setFocusCourseId] = useState(defaultData.courses[0].id);
+  const [focusAssignmentId, setFocusAssignmentId] = useState('');
   const [friendsBusy, setFriendsBusy] = useState(false);
   const [friendsMessage, setFriendsMessage] = useState('');
   const [socialProfiles, setSocialProfiles] = useState<SocialProfile[]>([]);
@@ -2687,6 +2727,23 @@ export default function Home() {
   }, [activeTab]);
 
   useEffect(() => {
+    if (!focusRunning) return;
+
+    const interval = window.setInterval(() => {
+      setFocusSecondsLeft((current) => {
+        if (current <= 1) {
+          setFocusRunning(false);
+          return 0;
+        }
+
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [focusRunning]);
+
+  useEffect(() => {
     queueMicrotask(() => {
       let hydrated = false;
       const saved = localStorage.getItem(storageKey);
@@ -2705,6 +2762,8 @@ export default function Home() {
           setShoppingDraft(blankShoppingItem(parsed.courses[0]?.id ?? ''));
           setHomeworkDraft(blankHomeworkItem(parsed.courses[0]?.id ?? ''));
           setTodoDraft(blankTodoItem());
+          setFocusCourseId(parsed.courses[0]?.id ?? '');
+          setFocusAssignmentId('');
         } catch {
           localStorage.removeItem(storageKey);
         }
@@ -2721,6 +2780,8 @@ export default function Home() {
         setShoppingDraft(blankShoppingItem(firstCourseId));
         setHomeworkDraft(blankHomeworkItem(firstCourseId));
         setTodoDraft(blankTodoItem());
+        setFocusCourseId(firstCourseId);
+        setFocusAssignmentId('');
       }
       setDateLabel(
         new Date().toLocaleDateString(undefined, {
@@ -3309,6 +3370,42 @@ export default function Home() {
     [data.courses],
   );
   const selectedOfficeHourCourse = courseById.get(officeHourDraft.courseId);
+  const effectiveFocusCourseId = data.courses.some(
+    (course) => course.id === focusCourseId,
+  )
+    ? focusCourseId
+    : (data.courses[0]?.id ?? '');
+  const focusCourse = courseById.get(effectiveFocusCourseId);
+  const focusAssignments = useMemo(
+    () =>
+      data.assignments
+        .filter(
+          (assignment) =>
+            assignment.courseId === effectiveFocusCourseId &&
+            assignment.status !== 'Done' &&
+            !assignment.submitted,
+        )
+        .sort((a, b) => {
+          const dueDateDiff =
+            new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          if (dueDateDiff !== 0) return dueDateDiff;
+          return (a.dueTime ?? '').localeCompare(b.dueTime ?? '');
+        }),
+    [data.assignments, effectiveFocusCourseId],
+  );
+  const focusAssignment = focusAssignments.find(
+    (assignment) => assignment.id === focusAssignmentId,
+  );
+  const activeFocusMode =
+    focusModeOptions.find((option) => option.value === focusMode) ??
+    focusModeOptions[0];
+  const focusTotalSeconds = activeFocusMode.minutes * 60;
+  const focusProgress =
+    focusTotalSeconds > 0 ? focusSecondsLeft / focusTotalSeconds : 0;
+  const focusElapsedSeconds = focusTotalSeconds - focusSecondsLeft;
+  const focusRadius = 102;
+  const focusCircumference = 2 * Math.PI * focusRadius;
+  const focusDashOffset = focusCircumference * (1 - focusProgress);
 
   const assignmentMetrics = useMemo(() => {
     const total = data.assignments.length;
@@ -3517,6 +3614,21 @@ export default function Home() {
       : cloudStatus === 'offline'
         ? 'offline'
         : 'local';
+
+  const selectFocusMode = (nextMode: FocusMode) => {
+    const nextOption =
+      focusModeOptions.find((option) => option.value === nextMode) ??
+      focusModeOptions[0];
+
+    setFocusMode(nextMode);
+    setFocusRunning(false);
+    setFocusSecondsLeft(nextOption.minutes * 60);
+  };
+
+  const resetFocusTimer = () => {
+    setFocusRunning(false);
+    setFocusSecondsLeft(focusTotalSeconds);
+  };
 
   const updateAssignment = <K extends keyof Assignment>(
     id: string,
@@ -4788,7 +4900,7 @@ export default function Home() {
 
           <TabsContent
             value="friends"
-            className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]"
+            className="grid min-w-0 gap-3 sm:gap-4 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]"
           >
             <section className="pixel-panel min-w-0 p-3 sm:p-4 xl:col-span-2">
               <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
@@ -4936,6 +5048,10 @@ export default function Home() {
                       >
                         <input
                           type="checkbox"
+                          aria-label={`Include ${friendDisplayName(
+                            profile,
+                            'friend',
+                          )} in common breaks`}
                           checked={checked}
                           onChange={(event) =>
                             setSelectedFriendIds((current) =>
@@ -4981,9 +5097,10 @@ export default function Home() {
                     Finds shared free windows from published availability.
                   </p>
                 </div>
-                <div className="grid min-w-0 grid-cols-2 gap-2">
+                <div className="grid w-full min-w-0 gap-2 sm:w-auto sm:grid-cols-2">
                   <Field label="Minimum">
                     <NativeSelect
+                      className="w-full min-w-0"
                       value={String(minimumBreakMinutes)}
                       onChange={(event) =>
                         setMinimumBreakMinutes(Number(event.target.value))
@@ -4996,6 +5113,7 @@ export default function Home() {
                   </Field>
                   <Field label="Team">
                     <NativeSelect
+                      className="w-full min-w-0"
                       value={selectedTeamId}
                       onChange={(event) =>
                         setSelectedTeamId(event.target.value)
@@ -5133,6 +5251,191 @@ export default function Home() {
                     </Button>
                   </div>
                 ) : null}
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="focus" className="grid min-w-0 gap-3 sm:gap-4">
+            <section className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(280px,0.55fr)]">
+              <div className="grid min-w-0 gap-3 sm:gap-4">
+                <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <h2 className="text-xl font-black">Focus Timer</h2>
+                      <span className="border-2 border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-black uppercase text-blue-950/70">
+                        In progress
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold text-blue-950/70">
+                      A soft Pomodoro timer for study blocks and breaks.
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 border-2 border-blue-200 bg-blue-50 px-3 py-2 text-sm font-black text-blue-950/75">
+                    <Clock3 className="size-4" />
+                    {activeFocusMode.minutes} min
+                  </div>
+                </div>
+
+                <div className="grid min-w-0 gap-2 md:grid-cols-3">
+                  {focusModeOptions.map((option) => {
+                    const selected = option.value === focusMode;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => selectFocusMode(option.value)}
+                        className={`grid min-h-20 min-w-0 gap-1 border-2 px-3 py-2 text-left transition ${
+                          selected
+                            ? 'border-blue-500 bg-blue-50 shadow-[3px_3px_0_#fef3c7]'
+                            : 'border-blue-200 bg-white hover:border-blue-300'
+                        }`}
+                      >
+                        <span className="text-sm font-black text-blue-950">
+                          {option.label}
+                        </span>
+                        <span className="text-2xl font-black text-blue-950">
+                          {option.minutes}
+                        </span>
+                        <span className="text-xs font-semibold text-blue-950/60">
+                          {option.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                  <Field label="Course">
+                    <CourseSelect
+                      courses={data.courses}
+                      value={effectiveFocusCourseId}
+                      onChange={(value) => {
+                        setFocusCourseId(value);
+                        setFocusAssignmentId('');
+                      }}
+                    />
+                  </Field>
+                  <Field label="Task">
+                    <NativeSelect
+                      className="w-full min-w-0"
+                      value={focusAssignmentId}
+                      onChange={(event) =>
+                        setFocusAssignmentId(event.target.value)
+                      }
+                    >
+                      <NativeSelectOption value="">
+                        General focus
+                      </NativeSelectOption>
+                      {focusAssignments.map((assignment) => (
+                        <NativeSelectOption
+                          key={assignment.id}
+                          value={assignment.id}
+                        >
+                          {assignment.title || assignment.type}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                </div>
+
+                <div className="grid min-w-0 gap-3 border-2 border-blue-200 bg-white p-3 sm:grid-cols-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase text-blue-950/60">
+                      Course
+                    </p>
+                    <p className="mt-1 truncate text-sm font-black text-blue-950">
+                      {focusCourse?.name ?? 'General'}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase text-blue-950/60">
+                      Task
+                    </p>
+                    <p className="mt-1 truncate text-sm font-black text-blue-950">
+                      {focusAssignment?.title ?? 'General focus'}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase text-blue-950/60">
+                      Elapsed
+                    </p>
+                    <p className="mt-1 text-sm font-black text-blue-950">
+                      {formatFocusSeconds(focusElapsedSeconds)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid min-w-0 content-center gap-3 border-2 border-blue-200 bg-blue-50/50 p-3 sm:gap-4 sm:p-4">
+                <div className="relative mx-auto grid aspect-square w-full max-w-64 place-items-center sm:max-w-72">
+                  <svg
+                    className="absolute inset-0 size-full -rotate-90"
+                    viewBox="0 0 240 240"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      cx="120"
+                      cy="120"
+                      r={focusRadius}
+                      fill="none"
+                      stroke="#dbeafe"
+                      strokeWidth="14"
+                    />
+                    <circle
+                      cx="120"
+                      cy="120"
+                      r={focusRadius}
+                      fill="none"
+                      stroke="#60a5fa"
+                      strokeLinecap="butt"
+                      strokeWidth="14"
+                      strokeDasharray={focusCircumference}
+                      strokeDashoffset={focusDashOffset}
+                      className="transition-[stroke-dashoffset] duration-500 ease-linear"
+                    />
+                  </svg>
+                  <div className="relative grid place-items-center gap-1 text-center">
+                    <p className="text-sm font-black uppercase text-blue-950/60">
+                      {activeFocusMode.label}
+                    </p>
+                    <p className="text-5xl font-black leading-none text-blue-950 sm:text-6xl">
+                      {formatFocusSeconds(focusSecondsLeft)}
+                    </p>
+                    <p className="text-xs font-bold text-blue-950/55">
+                      {focusSecondsLeft === 0
+                        ? 'Done'
+                        : `${Math.round(focusProgress * 100)}% left`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    className="min-h-11"
+                    onClick={() =>
+                      setFocusRunning((current) =>
+                        focusSecondsLeft > 0 ? !current : current,
+                      )
+                    }
+                    disabled={focusSecondsLeft === 0}
+                  >
+                    {focusRunning ? (
+                      <Pause data-icon="inline-start" />
+                    ) : (
+                      <Play data-icon="inline-start" />
+                    )}
+                    {focusRunning ? 'Pause' : 'Start'}
+                  </Button>
+                  <Button
+                    className="min-h-11"
+                    variant="outline"
+                    onClick={resetFocusTimer}
+                  >
+                    <RotateCcw data-icon="inline-start" />
+                    Reset
+                  </Button>
+                </div>
               </div>
             </section>
           </TabsContent>
@@ -6650,7 +6953,7 @@ export default function Home() {
             </section>
           </TabsContent>
 
-          <TabsContent value="import" className="grid gap-4">
+          <TabsContent value="import" className="grid min-w-0 gap-3 sm:gap-4">
             <section className="pixel-panel min-w-0 p-3 sm:p-4">
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div className="min-w-0">
