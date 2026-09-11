@@ -163,6 +163,16 @@ type TodoItem = {
   done: boolean;
 };
 
+type ComfortImage = {
+  id: string;
+  src: string;
+  fileName: string;
+  caption: string;
+  width: number;
+  height: number;
+  addedAt: string;
+};
+
 type TrackerTab =
   | 'overview'
   | 'weekly'
@@ -176,7 +186,8 @@ type TrackerTab =
   | 'hours'
   | 'import'
   | 'friends'
-  | 'focus';
+  | 'focus'
+  | 'comfort';
 
 const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'overview', label: 'Overview', href: '/' },
@@ -192,6 +203,7 @@ const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'import', label: 'Import', href: '/import' },
   { value: 'friends', label: 'Friends', href: '/friends' },
   { value: 'focus', label: 'Focus', href: '/focus' },
+  { value: 'comfort', label: 'Comfort', href: '/comfort' },
 ];
 
 const tabFromPathname = (pathname: string): TrackerTab =>
@@ -377,6 +389,9 @@ const shortMonths = [
 ];
 const courseColors = ['#dbeafe', '#fef3c7', '#bfdbfe', '#eff6ff', '#e0f2fe'];
 const storageKey = 'mcgilltrack-template-v1';
+const comfortStorageKey = 'mcgilltrack-comfort-images-v1';
+const comfortMaxImages = 18;
+const comfortMaxImageDimension = 1400;
 const cloudSaveDelay = 400;
 const scheduleTypes = [
   'Lab-Tutorial',
@@ -832,6 +847,68 @@ const formatFocusSeconds = (seconds: number) => {
     remainingSeconds,
   ).padStart(2, '0')}`;
 };
+
+const readComfortImageFile = (file: File) =>
+  new Promise<Omit<ComfortImage, 'id' | 'caption' | 'addedAt'>>(
+    (resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error(`${file.name} is not an image.`));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error(`${file.name} could not load.`));
+      reader.onload = () => {
+        const source = typeof reader.result === 'string' ? reader.result : '';
+        const image = document.createElement('img');
+
+        image.onerror = () =>
+          reject(new Error(`${file.name} could not be read as an image.`));
+        image.onload = () => {
+          const naturalWidth = image.naturalWidth || image.width;
+          const naturalHeight = image.naturalHeight || image.height;
+
+          if (!naturalWidth || !naturalHeight) {
+            reject(new Error(`${file.name} has no readable size.`));
+            return;
+          }
+
+          const scale = Math.min(
+            1,
+            comfortMaxImageDimension / Math.max(naturalWidth, naturalHeight),
+          );
+          const width = Math.max(1, Math.round(naturalWidth * scale));
+          const height = Math.max(1, Math.round(naturalHeight * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext('2d');
+
+          if (!context) {
+            reject(new Error(`${file.name} could not be prepared.`));
+            return;
+          }
+
+          context.drawImage(image, 0, 0, width, height);
+          const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          const src =
+            outputType === 'image/png'
+              ? canvas.toDataURL(outputType)
+              : canvas.toDataURL(outputType, 0.86);
+
+          resolve({
+            src,
+            fileName: file.name,
+            width,
+            height,
+          });
+        };
+
+        image.src = source;
+      };
+      reader.readAsDataURL(file);
+    },
+  );
 
 const formatDisplayTime = (time: string) => {
   const [rawHours = '0', rawMinutes = '0'] = time.split(':');
@@ -2597,6 +2674,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const schedulePdfInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
+  const comfortImageInputRef = useRef<HTMLInputElement>(null);
   const notesBoardRef = useRef<HTMLElement | null>(null);
   const [data, setData] = useState<TrackerData>(defaultData);
   const dataRef = useRef(defaultData);
@@ -2645,6 +2723,8 @@ export default function Home() {
   const [focusRunning, setFocusRunning] = useState(false);
   const [focusCourseId, setFocusCourseId] = useState(defaultData.courses[0].id);
   const [focusAssignmentId, setFocusAssignmentId] = useState('');
+  const [comfortImages, setComfortImages] = useState<ComfortImage[]>([]);
+  const [comfortMessage, setComfortMessage] = useState('');
   const [friendsBusy, setFriendsBusy] = useState(false);
   const [friendsMessage, setFriendsMessage] = useState('');
   const [socialProfiles, setSocialProfiles] = useState<SocialProfile[]>([]);
@@ -2742,6 +2822,27 @@ export default function Home() {
 
     return () => window.clearInterval(interval);
   }, [focusRunning]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      const saved = localStorage.getItem(comfortStorageKey);
+      if (!saved) return;
+
+      try {
+        const parsed = JSON.parse(saved) as ComfortImage[];
+        setComfortImages(
+          parsed.filter(
+            (image) =>
+              image &&
+              typeof image.id === 'string' &&
+              typeof image.src === 'string',
+          ),
+        );
+      } catch {
+        localStorage.removeItem(comfortStorageKey);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -3628,6 +3729,80 @@ export default function Home() {
   const resetFocusTimer = () => {
     setFocusRunning(false);
     setFocusSecondsLeft(focusTotalSeconds);
+  };
+
+  const saveComfortImages = (nextImages: ComfortImage[], message = '') => {
+    setComfortImages(nextImages);
+
+    try {
+      localStorage.setItem(comfortStorageKey, JSON.stringify(nextImages));
+      setComfortMessage(message);
+    } catch {
+      setComfortMessage(
+        'Saved for this session, but the browser ran out of local picture space.',
+      );
+    }
+  };
+
+  const uploadComfortImages = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+
+    setComfortMessage('Adding pictures...');
+
+    try {
+      const preparedImages = await Promise.all(files.map(readComfortImageFile));
+      const newImages = preparedImages.map((image) => ({
+        ...image,
+        id: makeId(),
+        caption: '',
+        addedAt: new Date().toISOString(),
+      }));
+      const nextImages = [...newImages, ...comfortImages].slice(
+        0,
+        comfortMaxImages,
+      );
+      const skippedCount =
+        comfortImages.length + newImages.length - nextImages.length;
+
+      saveComfortImages(
+        nextImages,
+        skippedCount > 0
+          ? `Added ${newImages.length} picture${
+              newImages.length === 1 ? '' : 's'
+            }. Kept the newest ${comfortMaxImages}.`
+          : `Added ${newImages.length} picture${
+              newImages.length === 1 ? '' : 's'
+            }.`,
+      );
+    } catch (error) {
+      setComfortMessage(
+        error instanceof Error ? error.message : 'Those pictures could not load.',
+      );
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const updateComfortCaption = (id: string, caption: string) => {
+    saveComfortImages(
+      comfortImages.map((image) =>
+        image.id === id ? { ...image, caption } : image,
+      ),
+    );
+  };
+
+  const removeComfortImage = (id: string) => {
+    saveComfortImages(
+      comfortImages.filter((image) => image.id !== id),
+      'Picture removed.',
+    );
+  };
+
+  const clearComfortImages = () => {
+    saveComfortImages([], 'Comfort board cleared.');
   };
 
   const updateAssignment = <K extends keyof Assignment>(
@@ -5438,6 +5613,128 @@ export default function Home() {
                 </div>
               </div>
             </section>
+          </TabsContent>
+
+          <TabsContent value="comfort" className="grid min-w-0 gap-3 sm:gap-4">
+            <section className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-4 sm:p-4">
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-black">Comfort Board</h2>
+                    <span className="border-2 border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-black uppercase text-blue-950/70">
+                      Local
+                    </span>
+                  </div>
+                  <p className="max-w-3xl text-sm font-semibold text-blue-950/70">
+                    Keep memes, quotes, cozy pictures, or tiny visual boosts for
+                    rough study days.
+                  </p>
+                </div>
+                <div className="grid w-full min-w-0 gap-2 sm:w-auto sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    onClick={() => comfortImageInputRef.current?.click()}
+                  >
+                    <Upload data-icon="inline-start" />
+                    Add pictures
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!comfortImages.length}
+                    onClick={() => {
+                      if (window.confirm('Clear every comfort picture?')) {
+                        clearComfortImages();
+                      }
+                    }}
+                  >
+                    <Trash2 data-icon="inline-start" />
+                    Clear
+                  </Button>
+                </div>
+              </div>
+
+              {comfortMessage ? (
+                <p className="border-2 border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-950/70">
+                  {comfortMessage}
+                </p>
+              ) : null}
+
+              <input
+                ref={comfortImageInputRef}
+                className="hidden"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) => void uploadComfortImages(event)}
+              />
+            </section>
+
+            {comfortImages.length ? (
+              <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-3 sm:gap-4">
+                {comfortImages.map((image) => (
+                  <article
+                    key={image.id}
+                    className="pixel-panel grid min-w-0 gap-3 p-3 sm:p-4"
+                  >
+                    <div className="grid min-h-44 place-items-center overflow-hidden border-2 border-blue-200 bg-white/80 p-2 sm:min-h-56">
+                      <Image
+                        src={image.src}
+                        alt={image.caption || image.fileName}
+                        width={image.width}
+                        height={image.height}
+                        unoptimized
+                        className="max-h-80 max-w-full object-contain"
+                      />
+                    </div>
+                    <div className="grid min-w-0 gap-2">
+                      <TextInput
+                        value={image.caption}
+                        placeholder="Caption, reminder, or quote"
+                        aria-label={`Caption for ${image.fileName}`}
+                        onChange={(event) =>
+                          updateComfortCaption(image.id, event.target.value)
+                        }
+                      />
+                      <div className="flex min-w-0 items-center justify-between gap-3">
+                        <p className="truncate text-xs font-bold text-blue-950/55">
+                          {image.fileName}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          aria-label={`Delete ${image.fileName}`}
+                          onClick={() => removeComfortImage(image.id)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </section>
+            ) : (
+              <section className="pixel-panel grid min-h-72 place-items-center p-4 text-center">
+                <div className="grid max-w-md gap-3">
+                  <p className="text-xl font-black text-blue-950">
+                    Nothing cozy here yet.
+                  </p>
+                  <p className="text-sm font-semibold text-blue-950/65">
+                    Add a few images and they will resize to fit while keeping
+                    their original proportions.
+                  </p>
+                  <Button
+                    className="mx-auto"
+                    type="button"
+                    onClick={() => comfortImageInputRef.current?.click()}
+                  >
+                    <Upload data-icon="inline-start" />
+                    Add pictures
+                  </Button>
+                </div>
+              </section>
+            )}
           </TabsContent>
 
           <TabsContent value="assignments" className="grid gap-4">
