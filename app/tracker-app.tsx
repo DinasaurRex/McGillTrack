@@ -3489,7 +3489,14 @@ export default function Home() {
         <header className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-5 sm:p-4 xl:grid-cols-[1fr_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <div className="grid size-10 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[3px_3px_0_#dbeafe] sm:size-12 sm:shadow-[4px_4px_0_#dbeafe]">
-              <BookOpen className="size-5 sm:size-6" />
+              <Image
+                src="/assets/rabbit-cute.png"
+                alt=""
+                aria-hidden="true"
+                width={600}
+                height={600}
+                className="size-8 [image-rendering:pixelated] sm:size-10"
+              />
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase text-blue-950/70">
