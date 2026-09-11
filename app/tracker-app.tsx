@@ -164,7 +164,6 @@ type TodoItem = {
 type TrackerTab =
   | 'overview'
   | 'weekly'
-  | 'friends'
   | 'assignments'
   | 'courses'
   | 'grades'
@@ -173,12 +172,12 @@ type TrackerTab =
   | 'lists'
   | 'notes'
   | 'hours'
-  | 'import';
+  | 'import'
+  | 'friends';
 
 const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'overview', label: 'Overview', href: '/' },
   { value: 'weekly', label: 'Weekly', href: '/weekly' },
-  { value: 'friends', label: 'Friends', href: '/friends' },
   { value: 'assignments', label: 'Assignments', href: '/assignments' },
   { value: 'courses', label: 'Courses', href: '/courses' },
   { value: 'grades', label: 'Grades', href: '/grades' },
@@ -188,6 +187,7 @@ const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'notes', label: 'Notes', href: '/notes' },
   { value: 'hours', label: 'Hours', href: '/hours' },
   { value: 'import', label: 'Import', href: '/import' },
+  { value: 'friends', label: 'Friends', href: '/friends' },
 ];
 
 const tabFromPathname = (pathname: string): TrackerTab =>
@@ -358,14 +358,22 @@ const scheduleTypes = [
 ];
 
 const cloudErrorMessage = (message: string) =>
-  message.includes('tracker_profiles') || message.includes('schema cache')
-    ? 'Cloud table missing. Run supabase/tracker_profiles.sql once.'
+  message.includes('tracker_profiles') ||
+  message.includes('tracker_friend') ||
+  message.includes('tracker_social') ||
+  message.includes('tracker_availability') ||
+  message.includes('schema cache')
+    ? 'Cloud table missing. Run the Supabase setup SQL once.'
     : message.toLowerCase().includes('failed to fetch')
       ? 'Cloud connection failed. Local save still works.'
       : message;
 
 const cloudStatusFromError = (message: string): CloudStatus =>
-  message.includes('tracker_profiles') || message.includes('schema cache')
+  message.includes('tracker_profiles') ||
+  message.includes('tracker_friend') ||
+  message.includes('tracker_social') ||
+  message.includes('tracker_availability') ||
+  message.includes('schema cache')
     ? 'setup'
     : 'offline';
 
@@ -932,6 +940,62 @@ type AvailabilityWindow = {
   end: string;
 };
 
+type SocialProfile = {
+  user_id: string;
+  email: string;
+  display_name: string;
+  share_details: boolean;
+  updated_at?: string;
+};
+
+type FriendInvite = {
+  id: string;
+  sender_id: string;
+  sender_email: string | null;
+  recipient_email: string;
+  recipient_id: string | null;
+  status: 'pending' | 'accepted' | 'declined';
+  created_at: string;
+  responded_at: string | null;
+};
+
+type Friendship = {
+  id: string;
+  user_a: string;
+  user_b: string;
+  created_at: string;
+};
+
+type AvailabilityRow = {
+  id: string;
+  user_id: string;
+  day: string;
+  start_time: string;
+  end_time: string;
+  source: string;
+  updated_at: string;
+};
+
+type FriendTeam = {
+  id: string;
+  owner_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type FriendTeamMember = {
+  team_id: string;
+  user_id: string;
+  role: 'owner' | 'member';
+  status: 'active' | 'invited';
+  created_at: string;
+};
+
+type CommonBreakWindow = AvailabilityWindow & {
+  userIds: string[];
+};
+
 const buildAvailabilityWindows = (
   schedule: ScheduleBlock[],
   officeHours: OfficeHourBlock[],
@@ -1001,6 +1065,73 @@ const formatAvailabilityDuration = (window: AvailabilityWindow) => {
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return remainder ? `${hours} hr ${remainder} min` : `${hours} hr`;
+};
+
+const normalizeDbTime = (time: string) => time.slice(0, 5);
+
+const friendDisplayName = (profile: SocialProfile | undefined, fallback: string) =>
+  profile?.display_name?.trim() || profile?.email || fallback;
+
+const friendOtherUserId = (friendship: Friendship, userId: string) =>
+  friendship.user_a === userId ? friendship.user_b : friendship.user_a;
+
+const orderedFriendshipPair = (firstId: string, secondId: string) =>
+  firstId < secondId
+    ? { user_a: firstId, user_b: secondId }
+    : { user_a: secondId, user_b: firstId };
+
+const windowsFromRows = (rows: AvailabilityRow[]): AvailabilityWindow[] =>
+  rows.map((row) => ({
+    day: row.day,
+    start: normalizeDbTime(row.start_time),
+    end: normalizeDbTime(row.end_time),
+  }));
+
+const findCommonBreakWindows = (
+  availabilityByUser: Map<string, AvailabilityWindow[]>,
+  userIds: string[],
+  minMinutes = 45,
+): CommonBreakWindow[] => {
+  if (!userIds.length) return [];
+
+  return days.flatMap((day) => {
+    const windowsByUser = userIds.map((userId) =>
+      (availabilityByUser.get(userId) ?? [])
+        .filter((window) => window.day === day)
+        .sort((first, second) =>
+          first.start === second.start
+            ? first.end.localeCompare(second.end)
+            : first.start.localeCompare(second.start),
+        ),
+    );
+
+    if (windowsByUser.some((windows) => windows.length === 0)) return [];
+
+    let overlaps = windowsByUser[0].map((window) => ({
+      start: timeToMinutes(window.start),
+      end: timeToMinutes(window.end),
+    }));
+
+    windowsByUser.slice(1).forEach((windows) => {
+      overlaps = overlaps.flatMap((overlap) =>
+        windows
+          .map((window) => ({
+            start: Math.max(overlap.start, timeToMinutes(window.start)),
+            end: Math.min(overlap.end, timeToMinutes(window.end)),
+          }))
+          .filter((window) => window.end - window.start >= minMinutes),
+      );
+    });
+
+    return overlaps
+      .filter((window) => window.end - window.start >= minMinutes)
+      .map((window) => ({
+        day,
+        start: minutesToTime(window.start),
+        end: minutesToTime(window.end),
+        userIds,
+      }));
+  });
 };
 
 const scheduleBlockLayout = (
@@ -2468,6 +2599,24 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<CloudStatus>('local');
+  const [friendEmailDraft, setFriendEmailDraft] = useState('');
+  const [teamNameDraft, setTeamNameDraft] = useState('');
+  const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState('');
+  const [teamMemberDraft, setTeamMemberDraft] = useState('');
+  const [minimumBreakMinutes, setMinimumBreakMinutes] = useState(45);
+  const [friendsBusy, setFriendsBusy] = useState(false);
+  const [friendsMessage, setFriendsMessage] = useState('');
+  const [socialProfiles, setSocialProfiles] = useState<SocialProfile[]>([]);
+  const [friendInvites, setFriendInvites] = useState<FriendInvite[]>([]);
+  const [friendships, setFriendships] = useState<Friendship[]>([]);
+  const [availabilityRows, setAvailabilityRows] = useState<AvailabilityRow[]>(
+    [],
+  );
+  const [friendTeams, setFriendTeams] = useState<FriendTeam[]>([]);
+  const [friendTeamMembers, setFriendTeamMembers] = useState<
+    FriendTeamMember[]
+  >([]);
   const [courseDraft, setCourseDraft] = useState<Course>({
     id: makeId(),
     name: '',
@@ -2705,6 +2854,357 @@ export default function Home() {
     [saveCloudData],
   );
 
+  const loadFriendsData = useCallback(async (currentUser = userRef.current) => {
+    if (!supabase || !currentUser) return;
+
+    const email = currentUser.email?.trim().toLowerCase();
+    if (!email) {
+      setFriendsMessage('Sign in with an email to use Friends.');
+      return;
+    }
+
+    setFriendsBusy(true);
+    setFriendsMessage('');
+
+    try {
+      const displayName = email.split('@')[0] ?? email;
+      const { error: profileError } = await withTimeout(
+        supabase.from('tracker_social_profiles').upsert(
+          {
+            user_id: currentUser.id,
+            email,
+            display_name: displayName,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
+        ),
+      );
+
+      if (profileError) throw new Error(profileError.message);
+
+      const [
+        invitesResult,
+        friendshipsResult,
+        teamsResult,
+        teamMembersResult,
+      ] = await Promise.all([
+        withTimeout(
+          supabase
+            .from('tracker_friend_invites')
+            .select('*')
+            .order('created_at', { ascending: false }),
+        ),
+        withTimeout(
+          supabase
+            .from('tracker_friendships')
+            .select('*')
+            .order('created_at', { ascending: false }),
+        ),
+        withTimeout(
+          supabase
+            .from('tracker_friend_teams')
+            .select('*')
+            .order('created_at', { ascending: false }),
+        ),
+        withTimeout(
+          supabase
+            .from('tracker_friend_team_members')
+            .select('*')
+            .order('created_at', { ascending: true }),
+        ),
+      ]);
+
+      if (invitesResult.error) throw new Error(invitesResult.error.message);
+      if (friendshipsResult.error)
+        throw new Error(friendshipsResult.error.message);
+      if (teamsResult.error) throw new Error(teamsResult.error.message);
+      if (teamMembersResult.error)
+        throw new Error(teamMembersResult.error.message);
+
+      const nextInvites = (invitesResult.data ?? []) as FriendInvite[];
+      const nextFriendships = (friendshipsResult.data ?? []) as Friendship[];
+      const friendIds = nextFriendships.map((friendship) =>
+        friendOtherUserId(friendship, currentUser.id),
+      );
+      const visibleUserIds = Array.from(new Set([currentUser.id, ...friendIds]));
+
+      const [profilesResult, availabilityResult] = await Promise.all([
+        withTimeout(
+          supabase
+            .from('tracker_social_profiles')
+            .select('*')
+            .in('user_id', visibleUserIds),
+        ),
+        withTimeout(
+          supabase
+            .from('tracker_availability_windows')
+            .select('*')
+            .in('user_id', visibleUserIds)
+            .order('day', { ascending: true })
+            .order('start_time', { ascending: true }),
+        ),
+      ]);
+
+      if (profilesResult.error) throw new Error(profilesResult.error.message);
+      if (availabilityResult.error)
+        throw new Error(availabilityResult.error.message);
+
+      setFriendInvites(nextInvites);
+      setFriendships(nextFriendships);
+      setSocialProfiles((profilesResult.data ?? []) as SocialProfile[]);
+      setAvailabilityRows((availabilityResult.data ?? []) as AvailabilityRow[]);
+      setFriendTeams((teamsResult.data ?? []) as FriendTeam[]);
+      setFriendTeamMembers(
+        (teamMembersResult.data ?? []) as FriendTeamMember[],
+      );
+      setSelectedFriendIds((currentSelection) => {
+        const existingSelection = currentSelection.filter((id) =>
+          friendIds.includes(id),
+        );
+        return existingSelection.length ? existingSelection : friendIds;
+      });
+    } catch (error) {
+      setFriendsMessage(
+        cloudErrorMessage(
+          error instanceof Error ? error.message : 'Friends sync failed.',
+        ),
+      );
+    } finally {
+      setFriendsBusy(false);
+    }
+  }, []);
+
+  const publishAvailability = async () => {
+    if (!supabase || !user) {
+      setFriendsMessage('Sign in to publish availability.');
+      return;
+    }
+
+    const windows = buildAvailabilityWindows(data.schedule, data.officeHours);
+    setFriendsBusy(true);
+    setFriendsMessage('');
+
+    try {
+      const { error: deleteError } = await withTimeout(
+        supabase
+          .from('tracker_availability_windows')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('source', 'schedule'),
+      );
+
+      if (deleteError) throw new Error(deleteError.message);
+
+      if (windows.length) {
+        const { error: insertError } = await withTimeout(
+          supabase.from('tracker_availability_windows').insert(
+            windows.map((window) => ({
+              user_id: user.id,
+              day: window.day,
+              start_time: window.start,
+              end_time: window.end,
+              source: 'schedule',
+              updated_at: new Date().toISOString(),
+            })),
+          ),
+        );
+
+        if (insertError) throw new Error(insertError.message);
+      }
+
+      setFriendsMessage('Availability published.');
+      await loadFriendsData(user);
+    } catch (error) {
+      setFriendsMessage(
+        cloudErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'Availability publish failed.',
+        ),
+      );
+    } finally {
+      setFriendsBusy(false);
+    }
+  };
+
+  const sendFriendInvite = async () => {
+    if (!supabase || !user) {
+      setFriendsMessage('Sign in to add friends.');
+      return;
+    }
+
+    const recipientEmail = friendEmailDraft.trim().toLowerCase();
+    if (!recipientEmail) return;
+    const senderEmail = user.email?.trim().toLowerCase() ?? null;
+
+    setFriendsBusy(true);
+    setFriendsMessage('');
+
+    try {
+      const { error } = await withTimeout(
+        supabase.from('tracker_friend_invites').insert({
+          sender_id: user.id,
+          sender_email: senderEmail,
+          recipient_email: recipientEmail,
+        }),
+      );
+
+      if (error) throw new Error(error.message);
+
+      setFriendEmailDraft('');
+      setFriendsMessage('Friend invite sent.');
+      await loadFriendsData(user);
+    } catch (error) {
+      setFriendsMessage(
+        cloudErrorMessage(
+          error instanceof Error ? error.message : 'Friend invite failed.',
+        ),
+      );
+    } finally {
+      setFriendsBusy(false);
+    }
+  };
+
+  const respondToFriendInvite = async (
+    invite: FriendInvite,
+    status: 'accepted' | 'declined',
+  ) => {
+    if (!supabase || !user) return;
+
+    setFriendsBusy(true);
+    setFriendsMessage('');
+
+    try {
+      const { error: inviteError } = await withTimeout(
+        supabase
+          .from('tracker_friend_invites')
+          .update({
+            status,
+            recipient_id: user.id,
+            responded_at: new Date().toISOString(),
+          })
+          .eq('id', invite.id),
+      );
+
+      if (inviteError) throw new Error(inviteError.message);
+
+      if (status === 'accepted') {
+        const { error: friendshipError } = await withTimeout(
+          supabase
+            .from('tracker_friendships')
+            .insert(orderedFriendshipPair(invite.sender_id, user.id)),
+        );
+
+        if (
+          friendshipError &&
+          !friendshipError.message.toLowerCase().includes('duplicate')
+        ) {
+          throw new Error(friendshipError.message);
+        }
+      }
+
+      setFriendsMessage(
+        status === 'accepted' ? 'Friend invite accepted.' : 'Invite declined.',
+      );
+      await loadFriendsData(user);
+    } catch (error) {
+      setFriendsMessage(
+        cloudErrorMessage(
+          error instanceof Error ? error.message : 'Invite update failed.',
+        ),
+      );
+    } finally {
+      setFriendsBusy(false);
+    }
+  };
+
+  const createFriendTeam = async () => {
+    if (!supabase || !user) {
+      setFriendsMessage('Sign in to create a team.');
+      return;
+    }
+
+    const name = teamNameDraft.trim();
+    if (!name) return;
+
+    setFriendsBusy(true);
+    setFriendsMessage('');
+
+    try {
+      const { data: team, error: teamError } = await withTimeout(
+        supabase
+          .from('tracker_friend_teams')
+          .insert({
+            owner_id: user.id,
+            name,
+          })
+          .select('*')
+          .single(),
+      );
+
+      if (teamError) throw new Error(teamError.message);
+
+      const createdTeam = team as FriendTeam;
+      const { error: memberError } = await withTimeout(
+        supabase.from('tracker_friend_team_members').insert({
+          team_id: createdTeam.id,
+          user_id: user.id,
+          role: 'owner',
+          status: 'active',
+        }),
+      );
+
+      if (memberError) throw new Error(memberError.message);
+
+      setTeamNameDraft('');
+      setSelectedTeamId(createdTeam.id);
+      setFriendsMessage('Team created.');
+      await loadFriendsData(user);
+    } catch (error) {
+      setFriendsMessage(
+        cloudErrorMessage(
+          error instanceof Error ? error.message : 'Team creation failed.',
+        ),
+      );
+    } finally {
+      setFriendsBusy(false);
+    }
+  };
+
+  const addFriendToTeam = async () => {
+    if (!supabase || !user || !selectedTeamId || !teamMemberDraft) return;
+
+    setFriendsBusy(true);
+    setFriendsMessage('');
+
+    try {
+      const { error } = await withTimeout(
+        supabase.from('tracker_friend_team_members').insert({
+          team_id: selectedTeamId,
+          user_id: teamMemberDraft,
+          role: 'member',
+          status: 'active',
+        }),
+      );
+
+      if (error && !error.message.toLowerCase().includes('duplicate')) {
+        throw new Error(error.message);
+      }
+
+      setTeamMemberDraft('');
+      setFriendsMessage('Team member added.');
+      await loadFriendsData(user);
+    } catch (error) {
+      setFriendsMessage(
+        cloudErrorMessage(
+          error instanceof Error ? error.message : 'Could not add teammate.',
+        ),
+      );
+    } finally {
+      setFriendsBusy(false);
+    }
+  };
+
   useEffect(() => {
     if (!supabase) return;
 
@@ -2717,6 +3217,16 @@ export default function Home() {
       if (!sessionUser) {
         cloudLoaded.current = false;
         setCloudStatus('local');
+        setFriendsMessage('');
+        setSocialProfiles([]);
+        setFriendInvites([]);
+        setFriendships([]);
+        setAvailabilityRows([]);
+        setFriendTeams([]);
+        setFriendTeamMembers([]);
+        setSelectedFriendIds([]);
+        setSelectedTeamId('');
+        setTeamMemberDraft('');
         return;
       }
 
@@ -2725,6 +3235,7 @@ export default function Home() {
 
       cloudLoaded.current = false;
       await loadCloudData(sessionUser);
+      await loadFriendsData(sessionUser);
     };
 
     void supabase.auth.getSession().then(({ data: sessionData, error }) => {
@@ -2748,7 +3259,7 @@ export default function Home() {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [loadCloudData]);
+  }, [loadCloudData, loadFriendsData]);
 
   useEffect(() => {
     if (!supabase || !user || !cloudLoaded.current || !storageReady) return;
@@ -2895,10 +3406,102 @@ export default function Home() {
       ),
     [data.assignments, weeklyDateSet],
   );
-  const friendBreakWindows = useMemo(() => {
-    const windows = buildAvailabilityWindows(data.schedule, data.officeHours);
-    return (windows.length ? windows : fallbackBreakWindows).slice(0, 5);
-  }, [data.officeHours, data.schedule]);
+  const ownAvailabilityWindows = useMemo(
+    () => buildAvailabilityWindows(data.schedule, data.officeHours),
+    [data.officeHours, data.schedule],
+  );
+  const socialProfileById = useMemo(
+    () =>
+      new Map(socialProfiles.map((profile) => [profile.user_id, profile])),
+    [socialProfiles],
+  );
+  const friendIds = useMemo(
+    () =>
+      user
+        ? friendships.map((friendship) => friendOtherUserId(friendship, user.id))
+        : [],
+    [friendships, user],
+  );
+  const incomingFriendInvites = useMemo(
+    () =>
+      user
+        ? friendInvites.filter(
+            (invite) =>
+              invite.status === 'pending' &&
+              invite.sender_id !== user.id &&
+              invite.recipient_email === user.email?.toLowerCase(),
+          )
+        : [],
+    [friendInvites, user],
+  );
+  const outgoingFriendInvites = useMemo(
+    () =>
+      user
+        ? friendInvites.filter(
+            (invite) =>
+              invite.status === 'pending' && invite.sender_id === user.id,
+          )
+        : [],
+    [friendInvites, user],
+  );
+  const selectedTeamMembers = useMemo(
+    () =>
+      selectedTeamId
+        ? friendTeamMembers
+            .filter(
+              (member) =>
+                member.team_id === selectedTeamId &&
+                member.status === 'active' &&
+                member.user_id !== user?.id,
+            )
+            .map((member) => member.user_id)
+        : [],
+    [friendTeamMembers, selectedTeamId, user?.id],
+  );
+  const overlapFriendIds =
+    selectedTeamId && selectedTeamMembers.length
+      ? selectedTeamMembers.filter((id) => friendIds.includes(id))
+      : selectedFriendIds.filter((id) => friendIds.includes(id));
+  const availabilityByUser = useMemo(() => {
+    const grouped = new Map<string, AvailabilityWindow[]>();
+
+    if (user) {
+      const publishedSelfWindows = windowsFromRows(
+        availabilityRows.filter((row) => row.user_id === user.id),
+      );
+      grouped.set(
+        user.id,
+        publishedSelfWindows.length
+          ? publishedSelfWindows
+          : ownAvailabilityWindows,
+      );
+    }
+
+    friendIds.forEach((friendId) => {
+      grouped.set(
+        friendId,
+        windowsFromRows(
+          availabilityRows.filter((row) => row.user_id === friendId),
+        ),
+      );
+    });
+
+    return grouped;
+  }, [availabilityRows, friendIds, ownAvailabilityWindows, user]);
+  const commonBreakWindows = useMemo(
+    () =>
+      user
+        ? findCommonBreakWindows(
+            availabilityByUser,
+            [user.id, ...overlapFriendIds],
+            minimumBreakMinutes,
+          ).slice(0, 6)
+        : [],
+    [availabilityByUser, minimumBreakMinutes, overlapFriendIds, user],
+  );
+  const ownPublishedAvailabilityCount = user
+    ? availabilityRows.filter((row) => row.user_id === user.id).length
+    : 0;
   const sortedNotes = useMemo(
     () => [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)),
     [data.notes],
@@ -4202,64 +4805,171 @@ export default function Home() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2 border-2 border-blue-200 bg-blue-50 px-3 py-2 text-sm font-black text-blue-950/75">
                   <Users className="size-4" />
-                  Free/busy preview
+                  Free/busy only
                 </div>
               </div>
+              {friendsMessage ? (
+                <p className="mt-3 border-2 border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-950/70">
+                  {friendsMessage}
+                </p>
+              ) : null}
+              {!user ? (
+                <p className="mt-3 border-2 border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-blue-950/70">
+                  Sign in to publish availability, add friends, and create
+                  teams.
+                </p>
+              ) : null}
             </section>
 
             <section className="pixel-panel grid min-w-0 gap-4 p-3 sm:p-4">
               <div className="flex items-center gap-3">
                 <UserPlus className="size-5 text-blue-950/70" />
-                <h3 className="text-lg font-black">Add People</h3>
+                <h3 className="text-lg font-black">People</h3>
               </div>
-              <div className="grid min-w-0 gap-3">
-                <Field label="Friend email or invite code">
-                  <TextInput placeholder="name@email.com or ABC123" />
+              <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <Field label="Friend email">
+                  <TextInput
+                    type="email"
+                    placeholder="name@email.com"
+                    value={friendEmailDraft}
+                    onChange={(event) =>
+                      setFriendEmailDraft(event.target.value)
+                    }
+                  />
                 </Field>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button disabled>
-                    <Plus data-icon="inline-start" />
-                    Add friend
-                  </Button>
-                  <Button variant="outline" disabled>
-                    Create team
-                  </Button>
-                </div>
+                <Button
+                  className="self-end"
+                  disabled={!user || friendsBusy || !friendEmailDraft.trim()}
+                  onClick={() => void sendFriendInvite()}
+                >
+                  <Plus data-icon="inline-start" />
+                  Invite
+                </Button>
               </div>
+              <Button
+                variant="outline"
+                disabled={!user || friendsBusy}
+                onClick={() => void publishAvailability()}
+              >
+                <Upload data-icon="inline-start" />
+                Publish my availability
+              </Button>
               <div className="grid gap-2 border-2 border-blue-200 bg-white p-3">
                 <p className="text-sm font-black text-blue-950">
-                  Sharing plan
+                  Sharing
                 </p>
                 <p className="text-sm text-blue-950/65">
-                  Friends and teams should start with free/busy only. Course
-                  names and locations can be opt-in later.
+                  Friends can see your free/busy windows after you publish.
+                  Course names and locations stay private for now.
+                </p>
+                <p className="text-xs font-bold text-blue-950/55">
+                  {ownPublishedAvailabilityCount
+                    ? `${ownPublishedAvailabilityCount} windows published.`
+                    : 'Nothing published yet.'}
                 </p>
               </div>
-              <div className="grid gap-2">
-                {[
-                  ['You', 'Your McGillTrack schedule', '#dbeafe'],
-                  ['Maya', 'Friend preview', '#fbcfe8'],
-                  ['Noah', 'Project teammate', '#fef3c7'],
-                  ['Design Team', 'Group preview', '#e9d5ff'],
-                ].map(([name, label, color]) => (
-                  <div
-                    key={name}
-                    className="flex min-w-0 items-center gap-3 border-2 border-blue-200 bg-white p-3"
-                  >
-                    <span
-                      className="size-4 shrink-0 border-2 border-blue-400"
-                      style={{ background: color }}
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-blue-950">
-                        {name}
+
+              {incomingFriendInvites.length ? (
+                <div className="grid gap-2">
+                  <p className="text-sm font-black text-blue-950">
+                    Incoming invites
+                  </p>
+                  {incomingFriendInvites.map((invite) => (
+                    <div
+                      key={invite.id}
+                      className="grid gap-2 border-2 border-blue-200 bg-white p-3"
+                    >
+                      <p className="truncate text-sm font-bold text-blue-950/75">
+                        {invite.sender_email ?? 'Friend request'}
                       </p>
-                      <p className="truncate text-xs font-semibold text-blue-950/65">
-                        {label}
-                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          disabled={friendsBusy}
+                          onClick={() =>
+                            void respondToFriendInvite(invite, 'accepted')
+                          }
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={friendsBusy}
+                          onClick={() =>
+                            void respondToFriendInvite(invite, 'declined')
+                          }
+                        >
+                          Decline
+                        </Button>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {outgoingFriendInvites.length ? (
+                <div className="grid gap-2">
+                  <p className="text-sm font-black text-blue-950">
+                    Sent invites
+                  </p>
+                  {outgoingFriendInvites.map((invite) => (
+                    <div
+                      key={invite.id}
+                      className="border-2 border-blue-200 bg-white p-3 text-sm font-bold text-blue-950/70"
+                    >
+                      {invite.recipient_email}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="grid gap-2">
+                <p className="text-sm font-black text-blue-950">Friends</p>
+                {friendIds.length ? (
+                  friendIds.map((friendId, index) => {
+                    const profile = socialProfileById.get(friendId);
+                    const checked = selectedFriendIds.includes(friendId);
+
+                    return (
+                      <label
+                        key={friendId}
+                        className="flex min-w-0 cursor-pointer items-center gap-3 border-2 border-blue-200 bg-white p-3"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) =>
+                            setSelectedFriendIds((current) =>
+                              event.target.checked
+                                ? [...current, friendId]
+                                : current.filter((id) => id !== friendId),
+                            )
+                          }
+                        />
+                        <span
+                          className="size-4 shrink-0 border-2 border-blue-400"
+                          style={{
+                            background:
+                              courseColors[index % courseColors.length],
+                          }}
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-blue-950">
+                            {friendDisplayName(profile, 'Friend')}
+                          </p>
+                          <p className="truncate text-xs font-semibold text-blue-950/65">
+                            {(availabilityByUser.get(friendId) ?? []).length
+                              ? 'Availability shared'
+                              : 'Waiting for availability'}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })
+                ) : (
+                  <div className="border-2 border-blue-100 bg-white/70 p-3 text-sm font-semibold text-blue-950/55">
+                    No friends yet.
                   </div>
-                ))}
+                )}
               </div>
             </section>
 
@@ -4268,36 +4978,43 @@ export default function Home() {
                 <div>
                   <h3 className="text-lg font-black">Common Breaks</h3>
                   <p className="text-sm text-blue-950/65">
-                    Previewing times from your current schedule.
+                    Finds shared free windows from published availability.
                   </p>
                 </div>
                 <div className="grid min-w-0 grid-cols-2 gap-2">
                   <Field label="Minimum">
-                    <NativeSelect defaultValue="45">
+                    <NativeSelect
+                      value={String(minimumBreakMinutes)}
+                      onChange={(event) =>
+                        setMinimumBreakMinutes(Number(event.target.value))
+                      }
+                    >
                       <NativeSelectOption value="30">30 min</NativeSelectOption>
                       <NativeSelectOption value="45">45 min</NativeSelectOption>
                       <NativeSelectOption value="60">1 hour</NativeSelectOption>
                     </NativeSelect>
                   </Field>
-                  <Field label="Group">
-                    <NativeSelect defaultValue="friends">
-                      <NativeSelectOption value="friends">
-                        Friends
-                      </NativeSelectOption>
-                      <NativeSelectOption value="team">Team</NativeSelectOption>
+                  <Field label="Team">
+                    <NativeSelect
+                      value={selectedTeamId}
+                      onChange={(event) =>
+                        setSelectedTeamId(event.target.value)
+                      }
+                    >
+                      <NativeSelectOption value="">Selected friends</NativeSelectOption>
+                      {friendTeams.map((team) => (
+                        <NativeSelectOption key={team.id} value={team.id}>
+                          {team.name}
+                        </NativeSelectOption>
+                      ))}
                     </NativeSelect>
                   </Field>
                 </div>
               </div>
 
               <div className="grid min-w-0 gap-3 md:grid-cols-2">
-                {friendBreakWindows.map((window, index) => {
-                  const people =
-                    index % 2 === 0
-                      ? ['You', 'Maya', 'Noah']
-                      : ['You', 'Maya', 'Design Team'];
-
-                  return (
+                {commonBreakWindows.length ? (
+                  commonBreakWindows.map((window) => (
                     <article
                       key={`${window.day}-${window.start}-${window.end}`}
                       className="grid min-w-0 gap-3 border-2 border-blue-200 bg-white p-3"
@@ -4316,18 +5033,106 @@ export default function Home() {
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {people.map((person) => (
+                        {window.userIds.map((personId) => (
                           <span
-                            key={person}
+                            key={personId}
                             className="border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-950/70"
                           >
-                            {person}
+                            {personId === user?.id
+                              ? 'You'
+                              : friendDisplayName(
+                                  socialProfileById.get(personId),
+                                  'Friend',
+                                )}
                           </span>
                         ))}
                       </div>
                     </article>
-                  );
-                })}
+                  ))
+                ) : (
+                  <div className="border-2 border-blue-100 bg-white/70 p-3 text-sm font-semibold text-blue-950/55 md:col-span-2">
+                    {user
+                      ? 'Select friends and ask everyone to publish availability.'
+                      : 'Sign in to find common breaks.'}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-3 border-2 border-blue-200 bg-blue-50/60 p-3">
+                <p className="text-sm font-black text-blue-950">Teams</p>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <Field label="Team name">
+                    <TextInput
+                      placeholder="Design project team"
+                      value={teamNameDraft}
+                      onChange={(event) =>
+                        setTeamNameDraft(event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Button
+                    className="self-end"
+                    disabled={!user || friendsBusy || !teamNameDraft.trim()}
+                    onClick={() => void createFriendTeam()}
+                  >
+                    <Plus data-icon="inline-start" />
+                    Create
+                  </Button>
+                </div>
+                {friendTeams.length ? (
+                  <div className="grid gap-2">
+                    {friendTeams.map((team) => {
+                      const memberCount = friendTeamMembers.filter(
+                        (member) =>
+                          member.team_id === team.id &&
+                          member.status === 'active',
+                      ).length;
+
+                      return (
+                        <div
+                          key={team.id}
+                          className="flex min-w-0 items-center justify-between gap-3 border-2 border-blue-200 bg-white p-3"
+                        >
+                          <p className="truncate text-sm font-black text-blue-950">
+                            {team.name}
+                          </p>
+                          <span className="shrink-0 border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-950/70">
+                            {memberCount} members
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {selectedTeamId && friendIds.length ? (
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <Field label="Add teammate">
+                      <NativeSelect
+                        value={teamMemberDraft}
+                        onChange={(event) =>
+                          setTeamMemberDraft(event.target.value)
+                        }
+                      >
+                        <NativeSelectOption value="">Choose friend</NativeSelectOption>
+                        {friendIds.map((friendId) => (
+                          <NativeSelectOption key={friendId} value={friendId}>
+                            {friendDisplayName(
+                              socialProfileById.get(friendId),
+                              'Friend',
+                            )}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                    </Field>
+                    <Button
+                      className="self-end"
+                      disabled={friendsBusy || !teamMemberDraft}
+                      onClick={() => void addFriendToTeam()}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </section>
           </TabsContent>
