@@ -2787,7 +2787,7 @@ export default function Home() {
           if (dueDateDiff !== 0) return dueDateDiff;
           return (a.dueTime ?? '').localeCompare(b.dueTime ?? '');
         })
-        .slice(0, 8),
+        .slice(0, 6),
     [data.assignments],
   );
   const todaysClasses = useMemo(
