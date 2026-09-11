@@ -169,7 +169,8 @@ type TrackerTab =
   | 'office-hours'
   | 'lists'
   | 'notes'
-  | 'hours';
+  | 'hours'
+  | 'import';
 
 const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'overview', label: 'Overview', href: '/' },
@@ -182,6 +183,7 @@ const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'lists', label: 'Lists', href: '/lists' },
   { value: 'notes', label: 'Notes', href: '/notes' },
   { value: 'hours', label: 'Hours', href: '/hours' },
+  { value: 'import', label: 'Import', href: '/import' },
 ];
 
 const tabFromPathname = (pathname: string): TrackerTab =>
@@ -3484,7 +3486,7 @@ export default function Home() {
   return (
     <main className="min-h-[calc(100vh+8rem)] overflow-x-hidden bg-[var(--background)] text-blue-950">
       <div className="tablet-shell mx-auto flex w-full max-w-[1500px] min-w-0 flex-col gap-3 px-2 pt-3 pb-32 sm:px-5 sm:pt-4 sm:pb-40 xl:gap-5 xl:px-8">
-        <header className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-5 sm:p-4 xl:grid-cols-[1fr_auto_auto] xl:items-center">
+        <header className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-5 sm:p-4 xl:grid-cols-[1fr_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <div className="grid size-10 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[3px_3px_0_#dbeafe] sm:size-12 sm:shadow-[4px_4px_0_#dbeafe]">
               <BookOpen className="size-5 sm:size-6" />
@@ -3497,72 +3499,6 @@ export default function Home() {
                 McGillTrack
               </h1>
             </div>
-          </div>
-          <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-start xl:justify-end">
-            <Button
-              className="w-full sm:w-auto"
-              variant="outline"
-              onClick={exportData}
-            >
-              <Download data-icon="inline-start" />
-              Export
-            </Button>
-            <Button
-              className="w-full sm:w-auto"
-              variant="outline"
-              onClick={() => schedulePdfInputRef.current?.click()}
-            >
-              <Upload data-icon="inline-start" />
-              <span className="sm:hidden">PDF</span>
-              <span className="hidden sm:inline">Import Schedule PDF</span>
-            </Button>
-            <Button
-              className="w-full sm:w-auto"
-              variant="outline"
-              onClick={() => excelInputRef.current?.click()}
-            >
-              <Upload data-icon="inline-start" />
-              <span className="sm:hidden">Excel</span>
-              <span className="hidden sm:inline">Import Excel</span>
-            </Button>
-            <Button
-              className="w-full sm:w-auto"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload data-icon="inline-start" />
-              <span className="sm:hidden">Data</span>
-              <span className="hidden sm:inline">Import Data</span>
-            </Button>
-            <Button
-              className="col-span-2 w-full sm:col-span-1 sm:w-auto"
-              variant="secondary"
-              onClick={resetTemplate}
-            >
-              <RotateCcw data-icon="inline-start" />
-              Reset
-            </Button>
-            <input
-              ref={schedulePdfInputRef}
-              className="hidden"
-              type="file"
-              accept="application/pdf"
-              onChange={(event) => void importSchedulePdf(event)}
-            />
-            <input
-              ref={excelInputRef}
-              className="hidden"
-              type="file"
-              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-              onChange={(event) => void importExcelSetup(event)}
-            />
-            <input
-              ref={fileInputRef}
-              className="hidden"
-              type="file"
-              accept="application/json"
-              onChange={importData}
-            />
           </div>
           <div className="grid w-full gap-2 border-2 border-blue-300 bg-white/75 p-3 shadow-[3px_3px_0_#bfdbfe] sm:min-h-[112px] xl:w-[420px] xl:max-w-[420px]">
             <div className="flex items-center justify-between gap-3">
@@ -5665,6 +5601,122 @@ export default function Home() {
                   ))}
                 </TableBody>
               </Table>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="import" className="grid gap-4">
+            <section className="pixel-panel min-w-0 p-3 sm:p-4">
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-xl font-black">Import</h2>
+                  <p className="text-sm text-blue-950/65">
+                    Bring in schedule files, restore saved data, or export a
+                    backup.
+                  </p>
+                </div>
+                <span className="border-2 border-blue-300 bg-blue-50 px-3 py-1 text-xs font-black uppercase text-blue-950/70">
+                  Data tools
+                </span>
+              </div>
+
+              <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid min-w-0 gap-2 border-2 border-blue-200 bg-white p-3 shadow-[3px_3px_0_#dbeafe]">
+                  <h3 className="text-base font-black">Schedule PDF</h3>
+                  <p className="text-sm text-blue-950/65">
+                    Import classes from a schedule PDF.
+                  </p>
+                  <Button
+                    className="mt-2 w-full"
+                    variant="outline"
+                    onClick={() => schedulePdfInputRef.current?.click()}
+                  >
+                    <Upload data-icon="inline-start" />
+                    Import PDF
+                  </Button>
+                </div>
+
+                <div className="grid min-w-0 gap-2 border-2 border-blue-200 bg-white p-3 shadow-[3px_3px_0_#dbeafe]">
+                  <h3 className="text-base font-black">Excel Setup</h3>
+                  <p className="text-sm text-blue-950/65">
+                    Import courses and class blocks from Excel.
+                  </p>
+                  <Button
+                    className="mt-2 w-full"
+                    variant="outline"
+                    onClick={() => excelInputRef.current?.click()}
+                  >
+                    <Upload data-icon="inline-start" />
+                    Import Excel
+                  </Button>
+                </div>
+
+                <div className="grid min-w-0 gap-2 border-2 border-blue-200 bg-white p-3 shadow-[3px_3px_0_#dbeafe]">
+                  <h3 className="text-base font-black">Saved Data</h3>
+                  <p className="text-sm text-blue-950/65">
+                    Restore a tracker JSON backup.
+                  </p>
+                  <Button
+                    className="mt-2 w-full"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload data-icon="inline-start" />
+                    Import Data
+                  </Button>
+                </div>
+
+                <div className="grid min-w-0 gap-2 border-2 border-blue-200 bg-white p-3 shadow-[3px_3px_0_#dbeafe]">
+                  <h3 className="text-base font-black">Export Backup</h3>
+                  <p className="text-sm text-blue-950/65">
+                    Download a JSON copy of your tracker.
+                  </p>
+                  <Button
+                    className="mt-2 w-full"
+                    variant="outline"
+                    onClick={exportData}
+                  >
+                    <Download data-icon="inline-start" />
+                    Export
+                  </Button>
+                </div>
+
+                <div className="grid min-w-0 gap-2 border-2 border-amber-200 bg-amber-50 p-3 shadow-[3px_3px_0_#fde68a] md:col-span-2 xl:col-span-1">
+                  <h3 className="text-base font-black">Reset Tracker</h3>
+                  <p className="text-sm text-blue-950/65">
+                    Return the tracker to its starter template.
+                  </p>
+                  <Button
+                    className="mt-2 w-full"
+                    variant="secondary"
+                    onClick={resetTemplate}
+                  >
+                    <RotateCcw data-icon="inline-start" />
+                    Reset
+                  </Button>
+                </div>
+              </div>
+
+              <input
+                ref={schedulePdfInputRef}
+                className="hidden"
+                type="file"
+                accept="application/pdf"
+                onChange={(event) => void importSchedulePdf(event)}
+              />
+              <input
+                ref={excelInputRef}
+                className="hidden"
+                type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                onChange={(event) => void importExcelSetup(event)}
+              />
+              <input
+                ref={fileInputRef}
+                className="hidden"
+                type="file"
+                accept="application/json"
+                onChange={importData}
+              />
             </section>
           </TabsContent>
         </Tabs>
