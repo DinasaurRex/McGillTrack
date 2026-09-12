@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import {
   BarChart3,
+  Bell,
   BookOpen,
   CalendarDays,
   ChevronLeft,
@@ -22,6 +23,7 @@ import {
   Play,
   RotateCcw,
   ShoppingCart,
+  Smartphone,
   Trash2,
   Upload,
   UserPlus,
@@ -173,6 +175,11 @@ type ComfortImage = {
   addedAt: string;
 };
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
+
 type TrackerTab =
   | 'overview'
   | 'weekly'
@@ -187,7 +194,8 @@ type TrackerTab =
   | 'import'
   | 'friends'
   | 'focus'
-  | 'comfort';
+  | 'comfort'
+  | 'app';
 
 const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'overview', label: 'Overview', href: '/' },
@@ -204,6 +212,7 @@ const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'friends', label: 'Friends', href: '/friends' },
   { value: 'focus', label: 'Focus', href: '/focus' },
   { value: 'comfort', label: 'Comfort', href: '/comfort' },
+  { value: 'app', label: 'App', href: '/app' },
 ];
 
 const tabFromPathname = (pathname: string): TrackerTab =>
@@ -2725,6 +2734,14 @@ export default function Home() {
   const [focusAssignmentId, setFocusAssignmentId] = useState('');
   const [comfortImages, setComfortImages] = useState<ComfortImage[]>([]);
   const [comfortMessage, setComfortMessage] = useState('');
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | 'unsupported'
+  >('unsupported');
+  const [pwaServiceWorkerReady, setPwaServiceWorkerReady] = useState(false);
+  const [pwaMessage, setPwaMessage] = useState('');
   const [friendsBusy, setFriendsBusy] = useState(false);
   const [friendsMessage, setFriendsMessage] = useState('');
   const [socialProfiles, setSocialProfiles] = useState<SocialProfile[]>([]);
@@ -2842,6 +2859,64 @@ export default function Home() {
         localStorage.removeItem(comfortStorageKey);
       }
     });
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+      setPwaMessage('Install prompt ready.');
+    };
+
+    const standaloneQuery = window.matchMedia('(display-mode: standalone)');
+    const updateStandalone = () => {
+      const navigatorWithStandalone = window.navigator as Navigator & {
+        standalone?: boolean;
+      };
+
+      setIsStandaloneApp(
+        standaloneQuery.matches || navigatorWithStandalone.standalone === true,
+      );
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    standaloneQuery.addEventListener('change', updateStandalone);
+
+    queueMicrotask(() => {
+      updateStandalone();
+
+      if ('Notification' in window) {
+        setNotificationPermission(Notification.permission);
+      }
+
+      const canRegisterServiceWorker =
+        'serviceWorker' in navigator &&
+        (window.location.protocol === 'https:' ||
+          window.location.hostname === 'localhost');
+
+      if (!canRegisterServiceWorker) {
+        setPwaMessage('Use HTTPS before installing outside localhost.');
+        return;
+      }
+
+      void navigator.serviceWorker
+        .register('/sw.js')
+        .then(() => setPwaServiceWorkerReady(true))
+        .catch(() =>
+          setPwaMessage(
+            'App files are ready, but offline setup could not start yet.',
+          ),
+        );
+    });
+
+    return () => {
+      window.removeEventListener(
+        'beforeinstallprompt',
+        handleBeforeInstallPrompt,
+      );
+      standaloneQuery.removeEventListener('change', updateStandalone);
+    };
   }, []);
 
   useEffect(() => {
@@ -3729,6 +3804,67 @@ export default function Home() {
   const resetFocusTimer = () => {
     setFocusRunning(false);
     setFocusSecondsLeft(focusTotalSeconds);
+  };
+
+  const promptInstallApp = async () => {
+    if (isStandaloneApp) {
+      setPwaMessage('McGillTrack is already running like an app.');
+      return;
+    }
+
+    if (!installPrompt) {
+      setPwaMessage(
+        'On iPad or iPhone: open Share, then choose Add to Home Screen.',
+      );
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    setPwaMessage(
+      choice.outcome === 'accepted'
+        ? 'McGillTrack is installing.'
+        : 'Install dismissed for now.',
+    );
+  };
+
+  const requestAppNotifications = async () => {
+    if (!('Notification' in window)) {
+      setNotificationPermission('unsupported');
+      setPwaMessage('This browser does not support notifications yet.');
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    setPwaMessage(
+      permission === 'granted'
+        ? 'Notifications are allowed on this device.'
+        : 'Notifications are not enabled yet.',
+    );
+  };
+
+  const sendTestNotification = async () => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+      setPwaMessage('Enable notifications first.');
+      return;
+    }
+
+    const title = 'McGillTrack reminders are ready';
+    const options: NotificationOptions = {
+      body: 'This is the notification path we will use for deadlines and timers.',
+      icon: '/assets/pwa-icon-192.png',
+    };
+
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, options);
+    } else {
+      new Notification(title, options);
+    }
+
+    setPwaMessage('Sent a test notification.');
   };
 
   const saveComfortImages = (nextImages: ComfortImage[], message = '') => {
@@ -5735,6 +5871,127 @@ export default function Home() {
                 </div>
               </section>
             )}
+          </TabsContent>
+
+          <TabsContent value="app" className="grid min-w-0 gap-3 sm:gap-4">
+            <section className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-4 sm:p-4">
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-black">App Setup</h2>
+                    <span className="border-2 border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-black uppercase text-blue-950/70">
+                      PWA
+                    </span>
+                  </div>
+                  <p className="max-w-3xl text-sm font-semibold text-blue-950/70">
+                    Add McGillTrack to the Home Screen and prepare reminders for
+                    the notification work coming next.
+                  </p>
+                </div>
+                <div className="shrink-0 border-2 border-blue-200 bg-white px-3 py-2 text-xs font-black uppercase text-blue-950/70">
+                  {isStandaloneApp ? 'Installed' : 'Browser'}
+                </div>
+              </div>
+
+              {pwaMessage ? (
+                <p className="border-2 border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-950/70">
+                  {pwaMessage}
+                </p>
+              ) : null}
+            </section>
+
+            <section className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <article className="pixel-panel grid min-w-0 gap-3 p-3 sm:p-4">
+                <div className="flex items-start gap-3">
+                  <div className="grid size-11 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100">
+                    <Smartphone className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-black">Install</h3>
+                    <p className="text-sm font-semibold text-blue-950/65">
+                      {isStandaloneApp
+                        ? 'McGillTrack is running from the Home Screen.'
+                        : 'Use the browser install prompt where available.'}
+                    </p>
+                  </div>
+                </div>
+                <Button type="button" onClick={() => void promptInstallApp()}>
+                  <Download data-icon="inline-start" />
+                  {installPrompt ? 'Install McGillTrack' : 'Show iPad steps'}
+                </Button>
+                <div className="border-2 border-blue-100 bg-blue-50/70 p-3 text-sm font-semibold text-blue-950/70">
+                  On iPad or iPhone: Share, then Add to Home Screen.
+                </div>
+              </article>
+
+              <article className="pixel-panel grid min-w-0 gap-3 p-3 sm:p-4">
+                <div className="flex items-start gap-3">
+                  <div className="grid size-11 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100">
+                    <Bell className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-black">Notifications</h3>
+                    <p className="text-sm font-semibold text-blue-950/65">
+                      {notificationPermission === 'unsupported'
+                        ? 'Not available in this browser.'
+                        : `Permission: ${notificationPermission}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    disabled={notificationPermission === 'granted'}
+                    onClick={() => void requestAppNotifications()}
+                  >
+                    <Bell data-icon="inline-start" />
+                    Enable
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={notificationPermission !== 'granted'}
+                    onClick={() => void sendTestNotification()}
+                  >
+                    Test
+                  </Button>
+                </div>
+                <div className="border-2 border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-blue-950/70">
+                  Deadline and focus alerts still need push subscriptions before
+                  they can run in the background.
+                </div>
+              </article>
+
+              <article className="pixel-panel grid min-w-0 gap-3 p-3 sm:p-4 md:col-span-2 xl:col-span-1">
+                <div className="flex items-start gap-3">
+                  <div className="grid size-11 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100">
+                    <BookOpen className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-black">App Shell</h3>
+                    <p className="text-sm font-semibold text-blue-950/65">
+                      {pwaServiceWorkerReady
+                        ? 'Offline shell is ready.'
+                        : 'Preparing offline shell.'}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-2 text-sm font-bold text-blue-950/70">
+                  <div className="flex items-center justify-between gap-3 border-2 border-blue-100 bg-white px-3 py-2">
+                    <span>Manifest</span>
+                    <span>Ready</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-2 border-blue-100 bg-white px-3 py-2">
+                    <span>Bunny icons</span>
+                    <span>Ready</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-2 border-blue-100 bg-white px-3 py-2">
+                    <span>Offline fallback</span>
+                    <span>{pwaServiceWorkerReady ? 'Ready' : 'Pending'}</span>
+                  </div>
+                </div>
+              </article>
+            </section>
           </TabsContent>
 
           <TabsContent value="assignments" className="grid gap-4">

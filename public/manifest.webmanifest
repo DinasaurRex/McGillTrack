@@ -1,0 +1,32 @@
+{
+  "name": "McGillTrack",
+  "short_name": "McGillTrack",
+  "description": "A private-by-default academic tracker for assignments, schedules, notes, friends, focus time, and comfort pictures.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#e0f2fe",
+  "theme_color": "#dbeafe",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/assets/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
