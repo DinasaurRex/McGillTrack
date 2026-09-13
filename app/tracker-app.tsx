@@ -397,6 +397,20 @@ const shortMonths = [
   'Dec',
 ];
 const courseColors = ['#dbeafe', '#fef3c7', '#bfdbfe', '#eff6ff', '#e0f2fe'];
+const softenCourseColor = (color = '#dbeafe', amount = 0.58) => {
+  const match = color.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!match) return color;
+
+  const [, red, green, blue] = match;
+  const mix = (channel: string) => {
+    const value = Number.parseInt(channel, 16);
+    return Math.round(value + (255 - value) * amount)
+      .toString(16)
+      .padStart(2, '0');
+  };
+
+  return `#${mix(red)}${mix(green)}${mix(blue)}`;
+};
 const storageKey = 'mcgilltrack-template-v1';
 const comfortStorageKey = 'mcgilltrack-comfort-images-v1';
 const comfortMaxImages = 18;
@@ -4975,7 +4989,9 @@ export default function Home() {
                                       key={assignment.id}
                                       className="overflow-hidden border border-blue-300 px-2 py-0.5 text-center text-xs font-black text-blue-950"
                                       style={{
-                                        background: course?.color ?? '#dbeafe',
+                                        background: softenCourseColor(
+                                          course?.color,
+                                        ),
                                       }}
                                       title={`${assignment.type}: ${assignment.title}`}
                                     >
@@ -5065,6 +5081,13 @@ export default function Home() {
                                     dayScheduleBlocks,
                                   ),
                               );
+                              const visibleBlockAssignments =
+                                blockAssignments.slice(
+                                  0,
+                                  compactBlock ? 1 : 2,
+                                );
+                              const assignmentBadgeBackground =
+                                softenCourseColor(course?.color);
                               return (
                                 <div
                                   key={block.id}
@@ -5078,7 +5101,15 @@ export default function Home() {
                                   }}
                                   title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
                                 >
-                                  <div className="flex h-full min-h-0 items-center justify-center">
+                                  <div
+                                    className={`flex h-full min-h-0 items-center justify-center ${
+                                      visibleBlockAssignments.length
+                                        ? compactBlock
+                                          ? 'pb-4'
+                                          : 'pb-6'
+                                        : ''
+                                    }`}
+                                  >
                                     <div className="min-w-0 max-w-full">
                                       <p
                                         className={`truncate font-black leading-tight ${
@@ -5109,25 +5140,40 @@ export default function Home() {
                                           {block.type}
                                         </p>
                                       ) : null}
-                                      {blockAssignments
-                                        .slice(0, compactBlock ? 1 : 2)
-                                        .map((assignment) => (
+                                    </div>
+                                  </div>
+                                  {visibleBlockAssignments.length ? (
+                                    <div className="pointer-events-none absolute right-1.5 bottom-1.5 left-1.5 z-20 grid gap-0.5">
+                                      {visibleBlockAssignments.map(
+                                        (assignment) => (
                                           <p
                                             key={assignment.id}
-                                            className="mt-1 truncate border border-blue-300 bg-white/70 px-1 text-xs font-black leading-tight text-blue-950"
+                                            className="truncate border border-blue-300 px-1 py-0.5 text-xs font-black leading-tight text-blue-950"
+                                            style={{
+                                              background:
+                                                assignmentBadgeBackground,
+                                            }}
+                                            title={`${assignment.type}: ${assignment.title}`}
                                           >
                                             {assignment.type}:{' '}
                                             {assignment.title}
                                           </p>
-                                        ))}
+                                        ),
+                                      )}
                                       {!compactBlock &&
                                       blockAssignments.length > 2 ? (
-                                        <p className="mt-1 truncate border border-blue-200 bg-white/60 px-1 text-xs font-black leading-tight text-blue-950/65">
+                                        <p
+                                          className="truncate border border-blue-200 px-1 py-0.5 text-xs font-black leading-tight text-blue-950/65"
+                                          style={{
+                                            background:
+                                              assignmentBadgeBackground,
+                                          }}
+                                        >
                                           +{blockAssignments.length - 2} more
                                         </p>
                                       ) : null}
                                     </div>
-                                  </div>
+                                  ) : null}
                                 </div>
                               );
                             })
@@ -5201,7 +5247,7 @@ export default function Home() {
                               style={{
                                 top: layout.top,
                                 height: layout.height,
-                                background: course?.color ?? '#dbeafe',
+                                background: softenCourseColor(course?.color),
                               }}
                             >
                               <p className="truncate">{assignment.title}</p>
@@ -7765,7 +7811,10 @@ function WeeklyMobileAgenda({
                       {attachedAssignments.map((assignment) => (
                         <div
                           key={assignment.id}
-                          className="border border-blue-300 bg-white/70 px-2 py-1 text-sm font-black text-blue-950"
+                          className="border border-blue-300 px-2 py-1 text-sm font-black text-blue-950"
+                          style={{
+                            background: softenCourseColor(course?.color),
+                          }}
                         >
                           <p className="truncate">{assignment.title}</p>
                           <p className="text-xs font-semibold text-blue-950/65">
@@ -7833,8 +7882,8 @@ function WeeklyMobileAgenda({
                 sort: assignment.dueTime || '23:59',
                 node: (
                   <article
-                    className="grid min-w-0 gap-1 overflow-hidden border-2 border-blue-200 bg-blue-50 p-3"
-                    style={{ background: course?.color ?? '#dbeafe' }}
+                    className="grid min-w-0 gap-1 overflow-hidden border-2 border-blue-200 p-3"
+                    style={{ background: softenCourseColor(course?.color) }}
                   >
                     <p className="text-xs font-black uppercase text-blue-950/65">
                       {assignment.type}
