@@ -341,6 +341,8 @@ const weeks = [
   'Finals Week',
 ];
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const weekendDays = ['Saturday', 'Sunday'];
+const weeklyDays = [...days, ...weekendDays];
 type FocusMode = 'focus' | 'short-break' | 'long-break';
 
 const focusModeOptions: {
@@ -1302,6 +1304,16 @@ const blockContainsTime = (
   return minutes >= start - 10 && minutes <= end;
 };
 
+const assignmentDueTimeWithinSchedule = (assignment: Assignment) => {
+  if (!assignment.dueTime) return false;
+
+  const minutes = timeToMinutes(assignment.dueTime);
+  return minutes >= scheduleStartMinutes && minutes < scheduleEndMinutes;
+};
+
+const assignmentDueTimeOutsideSchedule = (assignment: Assignment) =>
+  Boolean(assignment.dueTime) && !assignmentDueTimeWithinSchedule(assignment);
+
 const assignmentAttachesToBlock = (
   assignment: Assignment,
   date: string,
@@ -1317,6 +1329,7 @@ const assignmentAttachesToBlock = (
     .sort((first, second) => first.start.localeCompare(second.start));
 
   if (!assignment.dueTime) return block.id === courseBlocks[0]?.id;
+  if (!assignmentDueTimeWithinSchedule(assignment)) return false;
 
   const timedBlock = courseBlocks.find((item) =>
     blockContainsTime(item, assignment.dueTime ?? ''),
@@ -3692,7 +3705,14 @@ export default function Home() {
     () => days.map((_day, index) => addIsoDays(weeklyWeekStart, index)),
     [weeklyWeekStart],
   );
-  const weeklyDateSet = useMemo(() => new Set(weeklyDates), [weeklyDates]);
+  const weeklyAssignmentDates = useMemo(
+    () => weeklyDays.map((_day, index) => addIsoDays(weeklyWeekStart, index)),
+    [weeklyWeekStart],
+  );
+  const weeklyDateSet = useMemo(
+    () => new Set(weeklyAssignmentDates),
+    [weeklyAssignmentDates],
+  );
   const weeklyAssignments = useMemo(
     () =>
       data.assignments.filter(
@@ -3702,6 +3722,22 @@ export default function Home() {
           !assignment.submitted,
       ),
     [data.assignments, weeklyDateSet],
+  );
+  const weeklyWeekendAssignments = useMemo(
+    () =>
+      weeklyAssignments.filter((assignment) =>
+        weeklyAssignmentDates.slice(days.length).includes(assignment.dueDate),
+      ),
+    [weeklyAssignmentDates, weeklyAssignments],
+  );
+  const weeklyAfterHoursAssignments = useMemo(
+    () =>
+      weeklyAssignments.filter(
+        (assignment) =>
+          weeklyDates.includes(assignment.dueDate) &&
+          assignmentDueTimeOutsideSchedule(assignment),
+      ),
+    [weeklyAssignments, weeklyDates],
   );
   const ownAvailabilityWindows = useMemo(
     () => buildAvailabilityWindows(data.schedule, data.officeHours),
