@@ -1,6 +1,8 @@
 const CACHE_PREFIX = 'mcgilltrack';
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = `${CACHE_PREFIX}-${CACHE_VERSION}-static`;
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const IS_LOCALHOST = LOCAL_HOSTS.has(self.location.hostname);
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/offline.html',
@@ -52,7 +54,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   const cacheableStatic =
-    url.pathname.startsWith('/_next/static/') ||
+    (!IS_LOCALHOST && url.pathname.startsWith('/_next/static/')) ||
     url.pathname.startsWith('/assets/') ||
     url.pathname === '/favicon.svg' ||
     url.pathname === '/manifest.webmanifest';

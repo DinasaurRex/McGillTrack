@@ -786,6 +786,21 @@ const daysLeft = (dueDate: string) => {
   return Math.ceil((due - today) / 86400000);
 };
 
+const isAssignmentDone = (
+  assignment: Pick<Assignment, 'status' | 'submitted'>,
+) => assignment.status === 'Done' || assignment.submitted;
+
+const assignmentCountdownLabel = (
+  assignment: Pick<Assignment, 'dueDate' | 'status' | 'submitted'>,
+) => {
+  if (isAssignmentDone(assignment)) return 'Yay!';
+
+  const left = daysLeft(assignment.dueDate);
+  if (left === null) return '-';
+  if (left < 0) return `${Math.abs(left)} late`;
+  return `${left} days left`;
+};
+
 const daysBetweenIso = (startDate: string, endDate: string) => {
   const start = parseIsoDate(startDate);
   const end = parseIsoDate(endDate);
@@ -2901,8 +2916,11 @@ export default function Home() {
       }
 
       void navigator.serviceWorker
-        .register('/sw.js')
-        .then(() => setPwaServiceWorkerReady(true))
+        .register('/sw.js', { updateViaCache: 'none' })
+        .then((registration) => {
+          setPwaServiceWorkerReady(true);
+          void registration.update();
+        })
         .catch(() =>
           setPwaMessage(
             'App files are ready, but offline setup could not start yet.',
@@ -3585,17 +3603,10 @@ export default function Home() {
 
   const assignmentMetrics = useMemo(() => {
     const total = data.assignments.length;
-    const done = data.assignments.filter(
-      (assignment) => assignment.status === 'Done' || assignment.submitted,
-    ).length;
+    const done = data.assignments.filter(isAssignmentDone).length;
     const overdue = data.assignments.filter((assignment) => {
       const left = daysLeft(assignment.dueDate);
-      return (
-        left !== null &&
-        left < 0 &&
-        assignment.status !== 'Done' &&
-        !assignment.submitted
-      );
+      return left !== null && left < 0 && !isAssignmentDone(assignment);
     }).length;
     const dueThisWeek = data.assignments.filter(
       (assignment) =>
@@ -3609,8 +3620,7 @@ export default function Home() {
             data.termStartDate,
             data.termEndDate,
           ) &&
-        assignment.status !== 'Done' &&
-        !assignment.submitted,
+        !isAssignmentDone(assignment),
     ).length;
     return { total, done, overdue, dueThisWeek };
   }, [data.assignments, data.termEndDate, data.termStartDate]);
@@ -7894,8 +7904,8 @@ function AssignmentMobileCards({
 }) {
   const websiteById = new Map(websites.map((website) => [website.id, website]));
   const sortedAssignments = [...assignments].sort((first, second) => {
-    const firstDone = first.status === 'Done' || first.submitted;
-    const secondDone = second.status === 'Done' || second.submitted;
+    const firstDone = isAssignmentDone(first);
+    const secondDone = isAssignmentDone(second);
     if (firstDone !== secondDone) return firstDone ? 1 : -1;
 
     const firstDue = new Date(
@@ -7921,7 +7931,7 @@ function AssignmentMobileCards({
     <div className="grid gap-3">
       {sortedAssignments.map((assignment) => {
         const left = daysLeft(assignment.dueDate);
-        const done = assignment.status === 'Done' || assignment.submitted;
+        const done = isAssignmentDone(assignment);
         const week = assignmentWeekLabel(
           assignment.dueDate,
           termStartDate,
@@ -7947,23 +7957,22 @@ function AssignmentMobileCards({
             return first.label.localeCompare(second.label);
           });
         const urgencyClass =
-          !done && left !== null && left <= 2
+          done
+            ? 'bg-emerald-50'
+            : left !== null && left <= 2
             ? 'bg-red-50'
-            : !done && left !== null && left <= 5
+            : left !== null && left <= 5
               ? 'bg-orange-50'
               : 'bg-white';
         const urgencyTextClass =
-          !done && left !== null && left <= 2
+          done
+            ? 'text-emerald-800'
+            : left !== null && left <= 2
             ? 'text-red-700'
-            : !done && left !== null && left <= 5
+            : left !== null && left <= 5
               ? 'text-orange-700'
               : 'text-blue-950';
-        const leftLabel =
-          left === null
-            ? '-'
-            : left < 0
-              ? `${Math.abs(left)} late`
-              : `${left} days left`;
+        const leftLabel = assignmentCountdownLabel(assignment);
 
         return (
           <article
@@ -8429,12 +8438,20 @@ function AssignmentPreviewList({
         const course = courseById.get(assignment.courseId);
         const left = daysLeft(assignment.dueDate);
         const dueTime = formatDueTime(assignment.dueTime);
-        const overdue = left !== null && left < 0;
+        const done = isAssignmentDone(assignment);
+        const overdue = !done && left !== null && left < 0;
+        const countdownLabel = done
+          ? 'Yay!'
+          : left === null
+            ? '-'
+            : left < 0
+              ? `${Math.abs(left)} late`
+              : `${left} days`;
         return (
           <article
             key={assignment.id}
-            className={`grid min-w-0 gap-2 overflow-hidden border-2 border-blue-200 bg-white p-3 ${
-              overdue ? 'bg-orange-50' : ''
+            className={`grid min-w-0 gap-2 overflow-hidden border-2 border-blue-200 p-3 ${
+              done ? 'bg-emerald-50' : overdue ? 'bg-orange-50' : 'bg-white'
             }`}
           >
             <div className="flex items-start gap-3">
@@ -8465,16 +8482,14 @@ function AssignmentPreviewList({
               </span>
               <span
                 className={`border px-2 py-0.5 ${
-                  overdue
+                  done
+                    ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
+                    : overdue
                     ? 'border-orange-300 bg-orange-100 text-orange-800'
                     : 'border-blue-200 bg-white'
                 }`}
               >
-                {left === null
-                  ? '-'
-                  : left < 0
-                    ? `${Math.abs(left)} late`
-                    : `${left} days`}
+                {countdownLabel}
               </span>
             </div>
           </article>
@@ -8560,8 +8575,8 @@ function AssignmentTable({
 }) {
   const websiteById = new Map(websites.map((website) => [website.id, website]));
   const sortedAssignments = [...assignments].sort((first, second) => {
-    const firstDone = first.status === 'Done' || first.submitted;
-    const secondDone = second.status === 'Done' || second.submitted;
+    const firstDone = isAssignmentDone(first);
+    const secondDone = isAssignmentDone(second);
     if (firstDone !== secondDone) return firstDone ? 1 : -1;
 
     const firstDue = new Date(
@@ -8592,7 +8607,7 @@ function AssignmentTable({
       <TableBody>
         {sortedAssignments.map((assignment) => {
           const left = daysLeft(assignment.dueDate);
-          const done = assignment.status === 'Done' || assignment.submitted;
+          const done = isAssignmentDone(assignment);
           const week = assignmentWeekLabel(
             assignment.dueDate,
             termStartDate,
@@ -8618,23 +8633,22 @@ function AssignmentTable({
               return first.label.localeCompare(second.label);
             });
           const urgencyClass =
-            !done && left !== null && left <= 2
-              ? 'bg-red-50'
-              : !done && left !== null && left <= 5
+            done
+              ? 'bg-emerald-50'
+              : left !== null && left <= 2
+                ? 'bg-red-50'
+                : left !== null && left <= 5
                 ? 'bg-orange-50'
                 : '';
           const urgencyTextClass =
-            !done && left !== null && left <= 2
-              ? 'text-red-700'
-              : !done && left !== null && left <= 5
+            done
+              ? 'text-emerald-800'
+              : left !== null && left <= 2
+                ? 'text-red-700'
+                : left !== null && left <= 5
                 ? 'text-orange-700'
                 : 'text-blue-950';
-          const leftLabel =
-            left === null
-              ? '-'
-              : left < 0
-                ? `${Math.abs(left)} late`
-                : `${left} days left`;
+          const leftLabel = assignmentCountdownLabel(assignment);
           return (
             <TableRow key={assignment.id} className={urgencyClass}>
               <TableCell className="align-top py-2">
