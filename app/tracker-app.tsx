@@ -359,6 +359,7 @@ const assignmentTypes: AssignmentType[] = [
   'Midterm',
   'Final',
 ];
+const examAssignmentTypes: AssignmentType[] = ['Test', 'Midterm', 'Final'];
 const weeks = [
   'Week 1',
   'Week 2',
@@ -918,6 +919,15 @@ const formatReminderSummary = (rule: ReminderRule) => {
   if (!rule.enabled) return 'Off';
   if (rule.amount === 0) return 'At event time';
   return `${rule.amount} ${reminderUnitLabel(rule.amount, rule.unit)} before`;
+};
+
+const formatBriefDueTiming = (dueDate: string) => {
+  const left = daysLeft(dueDate);
+  if (left === null) return 'soon';
+  if (left < 0) return `${Math.abs(left)} ${dayWord(left)} late`;
+  if (left === 0) return 'today';
+  if (left === 1) return 'tomorrow';
+  return `in ${left} days`;
 };
 
 const isAssignmentDone = (
@@ -3951,12 +3961,30 @@ export default function Home() {
         .slice(0, 6),
     [data.assignments],
   );
+  const morningBriefAssignments = useMemo(
+    () =>
+      upcomingAssignments.slice(
+        0,
+        Math.max(0, data.notifications.morningBrief.assignmentLimit),
+      ),
+    [data.notifications.morningBrief.assignmentLimit, upcomingAssignments],
+  );
   const todaysClasses = useMemo(
     () =>
       data.schedule
         .filter((block) => block.day === todayDay)
         .sort((a, b) => a.start.localeCompare(b.start)),
     [data.schedule, todayDay],
+  );
+  const todayExamAssignments = useMemo(
+    () =>
+      data.assignments.filter(
+        (assignment) =>
+          assignment.dueDate === todayIso() &&
+          examAssignmentTypes.includes(assignment.type) &&
+          !isAssignmentDone(assignment),
+      ),
+    [data.assignments],
   );
   const scheduleViewStartMinutes = useMemo(() => {
     const blocks = [...data.schedule, ...data.officeHours];
@@ -4246,14 +4274,24 @@ export default function Home() {
       icon: '/assets/pwa-icon-192.png',
     };
 
-    if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.ready;
-      await registration.showNotification(title, options);
-    } else {
-      new Notification(title, options);
+    try {
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification(title, options);
+      } else {
+        new Notification(title, options);
+      }
+      setPwaMessage('Sent a test notification.');
+    } catch {
+      try {
+        new Notification(title, options);
+        setPwaMessage('Sent a browser test notification.');
+      } catch {
+        setPwaMessage(
+          'Notifications are allowed, but this browser or device blocked the test.',
+        );
+      }
     }
-
-    setPwaMessage('Sent a test notification.');
   };
 
   const saveComfortImages = (nextImages: ComfortImage[], message = '') => {
@@ -4358,6 +4396,22 @@ export default function Home() {
             ...current.notifications.rules[ruleKey],
             [key]: value,
           },
+        },
+      },
+    }));
+  };
+
+  const updateMorningBriefSettings = <K extends keyof MorningBriefSettings>(
+    key: K,
+    value: MorningBriefSettings[K],
+  ) => {
+    setData((current) => ({
+      ...current,
+      notifications: {
+        ...current.notifications,
+        morningBrief: {
+          ...current.notifications.morningBrief,
+          [key]: value,
         },
       },
     }));
@@ -6550,6 +6604,127 @@ export default function Home() {
                   {pwaMessage}
                 </p>
               ) : null}
+            </section>
+
+            <section className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-4 sm:p-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              <article className="grid min-w-0 gap-3">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="grid size-11 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100">
+                      <Bell className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-black">Morning Brief</h3>
+                  <p className="text-sm font-semibold text-blue-950/65">
+                    A daily snapshot of classes, closest deadlines, and exam
+                    encouragement.
+                  </p>
+                  <p className="mt-1 text-xs font-bold text-blue-950/55">
+                    Saved here now; automatic background delivery still needs
+                    push scheduling.
+                  </p>
+                </div>
+              </div>
+                  <label className="flex shrink-0 items-center gap-2 text-sm font-black text-blue-950">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-blue-500"
+                      checked={data.notifications.morningBrief.enabled}
+                      onChange={(event) =>
+                        updateMorningBriefSettings(
+                          'enabled',
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    On
+                  </label>
+                </div>
+
+                <div className="grid min-w-0 gap-2 sm:grid-cols-3">
+                  <Field label="Send Time">
+                    <TextInput
+                      type="time"
+                      value={data.notifications.morningBrief.sendTime}
+                      onChange={(event) =>
+                        updateMorningBriefSettings(
+                          'sendTime',
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field label="Busy Day At">
+                    <TextInput
+                      type="number"
+                      min="1"
+                      value={
+                        data.notifications.morningBrief.busyDayClassThreshold
+                      }
+                      onChange={(event) =>
+                        updateMorningBriefSettings(
+                          'busyDayClassThreshold',
+                          Math.max(1, numberValue(event.target.value)),
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field label="Assignments">
+                    <TextInput
+                      type="number"
+                      min="0"
+                      value={data.notifications.morningBrief.assignmentLimit}
+                      onChange={(event) =>
+                        updateMorningBriefSettings(
+                          'assignmentLimit',
+                          Math.max(0, numberValue(event.target.value)),
+                        )
+                      }
+                    />
+                  </Field>
+                </div>
+              </article>
+
+              <article className="grid min-w-0 gap-3 border-2 border-blue-100 bg-blue-50/70 p-3">
+                <div>
+                  <p className="text-xs font-black uppercase text-blue-950/60">
+                    Preview
+                  </p>
+                  <p className="mt-1 text-sm font-black text-blue-950">
+                    {todaysClasses.length >=
+                    data.notifications.morningBrief.busyDayClassThreshold
+                      ? 'Busy day! Your closest upcoming assignments are:'
+                      : 'Good morning! Your closest upcoming assignments are:'}
+                  </p>
+                </div>
+                {morningBriefAssignments.length > 0 ? (
+                  <ul className="grid gap-2 text-sm font-semibold text-blue-950/75">
+                    {morningBriefAssignments.map((assignment) => {
+                      const course = courseById.get(assignment.courseId);
+
+                      return (
+                        <li
+                          key={assignment.id}
+                          className="border-2 border-blue-100 bg-white px-3 py-2"
+                        >
+                          {assignment.title || 'Untitled assignment'} in{' '}
+                          {course?.name || 'Unassigned course'} due{' '}
+                          {formatBriefDueTiming(assignment.dueDate)}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="border-2 border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-blue-950/65">
+                    No open assignments.
+                  </p>
+                )}
+                {todayExamAssignments.length > 0 ? (
+                  <p className="border-2 border-amber-200 bg-amber-50 px-3 py-2 text-sm font-black text-blue-950">
+                    I see you have an exam today, good luck!! You got this!
+                  </p>
+                ) : null}
+              </article>
             </section>
 
             <section className="grid min-w-0 gap-3 lg:grid-cols-3">
