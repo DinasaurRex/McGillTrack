@@ -175,6 +175,31 @@ type ComfortImage = {
   addedAt: string;
 };
 
+type ReminderUnit = 'minutes' | 'hours' | 'days';
+
+type NotificationRuleKey =
+  | 'classes'
+  | 'officeHours'
+  | 'assignments'
+  | 'quizzes'
+  | 'exams'
+  | 'focus';
+
+type ReminderRule = {
+  enabled: boolean;
+  amount: number;
+  unit: ReminderUnit;
+};
+
+type NotificationSettings = {
+  enabled: boolean;
+  quietHoursEnabled: boolean;
+  quietStart: string;
+  quietEnd: string;
+  defaultAssignmentDueTime: string;
+  rules: Record<NotificationRuleKey, ReminderRule>;
+};
+
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
@@ -195,6 +220,7 @@ type TrackerTab =
   | 'friends'
   | 'focus'
   | 'comfort'
+  | 'notifications'
   | 'app';
 
 const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
@@ -212,6 +238,7 @@ const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'friends', label: 'Friends', href: '/friends' },
   { value: 'focus', label: 'Focus', href: '/focus' },
   { value: 'comfort', label: 'Comfort', href: '/comfort' },
+  { value: 'notifications', label: 'Notifications', href: '/notifications' },
   { value: 'app', label: 'App', href: '/app' },
 ];
 
@@ -231,6 +258,7 @@ type TrackerData = {
   shopping: ShoppingItem[];
   homework: HomeworkItem[];
   todos: TodoItem[];
+  notifications: NotificationSettings;
 };
 
 type TrackerCollectionKey = {
@@ -531,6 +559,68 @@ const formatMonthDay = (value: string) => {
 const formatWeekRange = (weekStart: string) =>
   `${formatMonthDay(weekStart)} - ${formatMonthDay(addIsoDays(weekStart, 4))}`;
 
+const reminderUnits: ReminderUnit[] = ['minutes', 'hours', 'days'];
+
+const notificationRuleMeta: {
+  key: NotificationRuleKey;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+}[] = [
+  {
+    key: 'classes',
+    label: 'Classes',
+    description: 'Before scheduled classes start.',
+    icon: <CalendarDays className="size-5" />,
+  },
+  {
+    key: 'officeHours',
+    label: 'Office Hours',
+    description: 'Before office hour blocks start.',
+    icon: <Users className="size-5" />,
+  },
+  {
+    key: 'assignments',
+    label: 'Assignments',
+    description: 'Before ordinary assignments are due.',
+    icon: <ListChecks className="size-5" />,
+  },
+  {
+    key: 'quizzes',
+    label: 'Quizzes',
+    description: 'Before quiz deadlines.',
+    icon: <ListChecks className="size-5" />,
+  },
+  {
+    key: 'exams',
+    label: 'Tests & Exams',
+    description: 'Before tests, midterms, and finals.',
+    icon: <GraduationCap className="size-5" />,
+  },
+  {
+    key: 'focus',
+    label: 'Focus Timer',
+    description: 'When a focus session finishes.',
+    icon: <Clock3 className="size-5" />,
+  },
+];
+
+const createDefaultNotificationSettings = (): NotificationSettings => ({
+  enabled: true,
+  quietHoursEnabled: true,
+  quietStart: '22:00',
+  quietEnd: '07:30',
+  defaultAssignmentDueTime: '23:59',
+  rules: {
+    classes: { enabled: true, amount: 15, unit: 'minutes' },
+    officeHours: { enabled: false, amount: 30, unit: 'minutes' },
+    assignments: { enabled: true, amount: 24, unit: 'hours' },
+    quizzes: { enabled: true, amount: 2, unit: 'hours' },
+    exams: { enabled: true, amount: 2, unit: 'hours' },
+    focus: { enabled: true, amount: 0, unit: 'minutes' },
+  },
+});
+
 const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
   termStartDate: baseDate,
   termEndDate: addDays(94, baseDate),
@@ -701,6 +791,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       done: false,
     },
   ],
+  notifications: createDefaultNotificationSettings(),
 });
 
 const defaultData = createDefaultData();
@@ -804,6 +895,17 @@ const daysLeft = (dueDate: string) => {
   return Math.ceil((due - today) / 86400000);
 };
 
+const dayWord = (days: number) => (Math.abs(days) === 1 ? 'day' : 'days');
+
+const reminderUnitLabel = (amount: number, unit: ReminderUnit) =>
+  amount === 1 ? unit.replace(/s$/, '') : unit;
+
+const formatReminderSummary = (rule: ReminderRule) => {
+  if (!rule.enabled) return 'Off';
+  if (rule.amount === 0) return 'At event time';
+  return `${rule.amount} ${reminderUnitLabel(rule.amount, rule.unit)} before`;
+};
+
 const isAssignmentDone = (
   assignment: Pick<Assignment, 'status' | 'submitted'>,
 ) => assignment.status === 'Done' || assignment.submitted;
@@ -815,7 +917,7 @@ const assignmentCountdownLabel = (
 
   const left = daysLeft(assignment.dueDate);
   if (left === null) return '-';
-  if (left < 0) return `${Math.abs(left)} late`;
+  if (left < 0) return `${Math.abs(left)} ${dayWord(left)} late`;
   return `${left} days left`;
 };
 
@@ -2408,6 +2510,7 @@ const parseAnnabelleExcelWorkbook = (
       shopping: [],
       homework: [],
       todos: [],
+      notifications: createDefaultNotificationSettings(),
     },
     courses: courses.length,
     assignments: assignments.length,
@@ -2441,6 +2544,57 @@ const normalizeNotes = (notes = defaultData.notes): NoteEntry[] =>
     height: note.height ?? undefined,
   }));
 
+const normalizeReminderRule = (
+  incoming: Partial<ReminderRule> | undefined,
+  fallback: ReminderRule,
+): ReminderRule => {
+  const amount = Number(incoming?.amount ?? fallback.amount);
+  const unit = incoming?.unit;
+
+  return {
+    enabled:
+      typeof incoming?.enabled === 'boolean'
+        ? incoming.enabled
+        : fallback.enabled,
+    amount: Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0,
+    unit: unit && reminderUnits.includes(unit) ? unit : fallback.unit,
+  };
+};
+
+const normalizeNotificationSettings = (
+  incoming?: Partial<NotificationSettings>,
+): NotificationSettings => {
+  const fallback = createDefaultNotificationSettings();
+  const incomingRules = incoming?.rules as
+    | Partial<Record<NotificationRuleKey, Partial<ReminderRule>>>
+    | undefined;
+
+  return {
+    enabled:
+      typeof incoming?.enabled === 'boolean'
+        ? incoming.enabled
+        : fallback.enabled,
+    quietHoursEnabled:
+      typeof incoming?.quietHoursEnabled === 'boolean'
+        ? incoming.quietHoursEnabled
+        : fallback.quietHoursEnabled,
+    quietStart: incoming?.quietStart || fallback.quietStart,
+    quietEnd: incoming?.quietEnd || fallback.quietEnd,
+    defaultAssignmentDueTime:
+      incoming?.defaultAssignmentDueTime || fallback.defaultAssignmentDueTime,
+    rules: notificationRuleMeta.reduce(
+      (rules, meta) => ({
+        ...rules,
+        [meta.key]: normalizeReminderRule(
+          incomingRules?.[meta.key],
+          fallback.rules[meta.key],
+        ),
+      }),
+      {} as Record<NotificationRuleKey, ReminderRule>,
+    ),
+  };
+};
+
 const normalizeData = (incoming: Partial<TrackerData>): TrackerData => {
   const termStartDate = incoming.termStartDate ?? defaultData.termStartDate;
   const termEndDate = incoming.termEndDate ?? defaultData.termEndDate;
@@ -2467,6 +2621,7 @@ const normalizeData = (incoming: Partial<TrackerData>): TrackerData => {
     shopping: incoming.shopping ?? defaultData.shopping,
     homework: incoming.homework ?? defaultData.homework,
     todos: incoming.todos ?? defaultData.todos,
+    notifications: normalizeNotificationSettings(incoming.notifications),
   };
 };
 
@@ -4129,6 +4284,46 @@ export default function Home() {
 
   const clearComfortImages = () => {
     saveComfortImages([], 'Comfort board cleared.');
+  };
+
+  const updateNotificationSettings = <K extends keyof NotificationSettings>(
+    key: K,
+    value: NotificationSettings[K],
+  ) => {
+    setData((current) => ({
+      ...current,
+      notifications: {
+        ...current.notifications,
+        [key]: value,
+      },
+    }));
+  };
+
+  const updateNotificationRule = <K extends keyof ReminderRule>(
+    ruleKey: NotificationRuleKey,
+    key: K,
+    value: ReminderRule[K],
+  ) => {
+    setData((current) => ({
+      ...current,
+      notifications: {
+        ...current.notifications,
+        rules: {
+          ...current.notifications.rules,
+          [ruleKey]: {
+            ...current.notifications.rules[ruleKey],
+            [key]: value,
+          },
+        },
+      },
+    }));
+  };
+
+  const resetNotificationSettings = () => {
+    setData((current) => ({
+      ...current,
+      notifications: createDefaultNotificationSettings(),
+    }));
   };
 
   const updateAssignment = <K extends keyof Assignment>(
@@ -6233,6 +6428,294 @@ export default function Home() {
             )}
           </TabsContent>
 
+          <TabsContent
+            value="notifications"
+            className="grid min-w-0 gap-3 sm:gap-4"
+          >
+            <section className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-4 sm:p-4">
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-black">
+                      Notification Center
+                    </h2>
+                    <span className="border-2 border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-black uppercase text-blue-950/70">
+                      In progress
+                    </span>
+                  </div>
+                  <p className="max-w-3xl text-sm font-semibold text-blue-950/70">
+                    Choose when Trakkit should remind you before classes,
+                    deadlines, exams, and focus sessions.
+                  </p>
+                </div>
+                <label className="flex shrink-0 items-center gap-2 border-2 border-blue-200 bg-white px-3 py-2 text-sm font-black text-blue-950">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-blue-500"
+                    checked={data.notifications.enabled}
+                    onChange={(event) =>
+                      updateNotificationSettings(
+                        'enabled',
+                        event.target.checked,
+                      )
+                    }
+                  />
+                  Notifications
+                </label>
+              </div>
+
+              <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="border-2 border-blue-100 bg-blue-50/70 p-3">
+                  <p className="text-xs font-black uppercase text-blue-950/60">
+                    Browser Permission
+                  </p>
+                  <p className="mt-1 text-lg font-black text-blue-950">
+                    {notificationPermission}
+                  </p>
+                </div>
+                <div className="border-2 border-blue-100 bg-white p-3">
+                  <p className="text-xs font-black uppercase text-blue-950/60">
+                    Classes
+                  </p>
+                  <p className="mt-1 text-lg font-black text-blue-950">
+                    {formatReminderSummary(data.notifications.rules.classes)}
+                  </p>
+                </div>
+                <div className="border-2 border-blue-100 bg-white p-3">
+                  <p className="text-xs font-black uppercase text-blue-950/60">
+                    Assignments
+                  </p>
+                  <p className="mt-1 text-lg font-black text-blue-950">
+                    {formatReminderSummary(
+                      data.notifications.rules.assignments,
+                    )}
+                  </p>
+                </div>
+                <div className="border-2 border-blue-100 bg-white p-3">
+                  <p className="text-xs font-black uppercase text-blue-950/60">
+                    Exams
+                  </p>
+                  <p className="mt-1 text-lg font-black text-blue-950">
+                    {formatReminderSummary(data.notifications.rules.exams)}
+                  </p>
+                </div>
+              </div>
+
+              {pwaMessage ? (
+                <p className="border-2 border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-950/70">
+                  {pwaMessage}
+                </p>
+              ) : null}
+            </section>
+
+            <section className="grid min-w-0 gap-3 lg:grid-cols-3">
+              <article className="pixel-panel grid min-w-0 gap-3 p-3 sm:p-4">
+                <div className="flex items-start gap-3">
+                  <div className="grid size-11 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100">
+                    <Bell className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-black">Permission</h3>
+                    <p className="text-sm font-semibold text-blue-950/65">
+                      {notificationPermission === 'unsupported'
+                        ? 'Not available in this browser.'
+                        : `Permission: ${notificationPermission}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <Button
+                    type="button"
+                    disabled={notificationPermission === 'granted'}
+                    onClick={() => void requestAppNotifications()}
+                  >
+                    <Bell data-icon="inline-start" />
+                    Enable
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={notificationPermission !== 'granted'}
+                    onClick={() => void sendTestNotification()}
+                  >
+                    Test
+                  </Button>
+                </div>
+              </article>
+
+              <article className="pixel-panel grid min-w-0 gap-3 p-3 sm:p-4">
+                <div className="flex items-start gap-3">
+                  <div className="grid size-11 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100">
+                    <Clock3 className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-black">Quiet Hours</h3>
+                    <p className="text-sm font-semibold text-blue-950/65">
+                      Hold reminders during sleep or class-free time.
+                    </p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-sm font-black text-blue-950">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-blue-500"
+                    checked={data.notifications.quietHoursEnabled}
+                    onChange={(event) =>
+                      updateNotificationSettings(
+                        'quietHoursEnabled',
+                        event.target.checked,
+                      )
+                    }
+                  />
+                  Use quiet hours
+                </label>
+                <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+                  <Field label="From">
+                    <TextInput
+                      type="time"
+                      value={data.notifications.quietStart}
+                      onChange={(event) =>
+                        updateNotificationSettings(
+                          'quietStart',
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field label="Until">
+                    <TextInput
+                      type="time"
+                      value={data.notifications.quietEnd}
+                      onChange={(event) =>
+                        updateNotificationSettings(
+                          'quietEnd',
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </Field>
+                </div>
+              </article>
+
+              <article className="pixel-panel grid min-w-0 gap-3 p-3 sm:p-4">
+                <div className="flex items-start gap-3">
+                  <div className="grid size-11 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100">
+                    <CalendarDays className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-black">No Due Time</h3>
+                    <p className="text-sm font-semibold text-blue-950/65">
+                      Use this time for deadline reminder planning.
+                    </p>
+                  </div>
+                </div>
+                <Field label="Default Deadline Time">
+                  <TextInput
+                    type="time"
+                    value={data.notifications.defaultAssignmentDueTime}
+                    onChange={(event) =>
+                      updateNotificationSettings(
+                        'defaultAssignmentDueTime',
+                        event.target.value,
+                      )
+                    }
+                  />
+                </Field>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={resetNotificationSettings}
+                >
+                  <RotateCcw data-icon="inline-start" />
+                  Reset defaults
+                </Button>
+              </article>
+            </section>
+
+            <section className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {notificationRuleMeta.map((meta) => {
+                const rule = data.notifications.rules[meta.key];
+
+                return (
+                  <article
+                    key={meta.key}
+                    className={`pixel-panel grid min-w-0 gap-3 p-3 sm:p-4 ${
+                      rule.enabled ? 'bg-white' : 'bg-blue-50/50'
+                    }`}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="grid size-11 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100">
+                          {meta.icon}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-lg font-black">{meta.label}</h3>
+                          <p className="text-sm font-semibold text-blue-950/65">
+                            {meta.description}
+                          </p>
+                        </div>
+                      </div>
+                      <label className="flex shrink-0 items-center gap-2 text-sm font-black text-blue-950">
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-blue-500"
+                          checked={rule.enabled}
+                          onChange={(event) =>
+                            updateNotificationRule(
+                              meta.key,
+                              'enabled',
+                              event.target.checked,
+                            )
+                          }
+                        />
+                        On
+                      </label>
+                    </div>
+
+                    <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)]">
+                      <Field label="Remind">
+                        <TextInput
+                          type="number"
+                          min="0"
+                          value={rule.amount}
+                          onChange={(event) =>
+                            updateNotificationRule(
+                              meta.key,
+                              'amount',
+                              numberValue(event.target.value),
+                            )
+                          }
+                        />
+                      </Field>
+                      <Field label="Unit">
+                        <NativeSelect
+                          value={rule.unit}
+                          onChange={(event) =>
+                            updateNotificationRule(
+                              meta.key,
+                              'unit',
+                              event.target.value as ReminderUnit,
+                            )
+                          }
+                        >
+                          {reminderUnits.map((unit) => (
+                            <NativeSelectOption key={unit} value={unit}>
+                              {reminderUnitLabel(rule.amount, unit)}
+                            </NativeSelectOption>
+                          ))}
+                        </NativeSelect>
+                      </Field>
+                    </div>
+
+                    <p className="border-2 border-blue-100 bg-blue-50/70 px-3 py-2 text-sm font-black text-blue-950/70">
+                      {formatReminderSummary(rule)}
+                    </p>
+                  </article>
+                );
+              })}
+            </section>
+          </TabsContent>
+
           <TabsContent value="app" className="grid min-w-0 gap-3 sm:gap-4">
             <section className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-4 sm:p-4">
               <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
@@ -6244,8 +6727,8 @@ export default function Home() {
                     </span>
                   </div>
                   <p className="max-w-3xl text-sm font-semibold text-blue-950/70">
-                    Add Trakkit to the Home Screen and prepare reminders for
-                    the notification work coming next.
+                    Add Trakkit to the Home Screen and keep the app shell ready
+                    for offline use.
                   </p>
                 </div>
                 <div className="shrink-0 border-2 border-blue-200 bg-white px-3 py-2 text-xs font-black uppercase text-blue-950/70">
@@ -8826,7 +9309,7 @@ function AssignmentPreviewList({
           : left === null
             ? '-'
             : left < 0
-              ? `${Math.abs(left)} late`
+              ? `${Math.abs(left)} ${dayWord(left)} late`
               : `${left} days`;
         return (
           <article
