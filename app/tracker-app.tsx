@@ -857,12 +857,6 @@ const scheduleEndHour = 18;
 const scheduleHourHeight = 56;
 const scheduleStartMinutes = scheduleStartHour * 60;
 const scheduleEndMinutes = scheduleEndHour * 60;
-const scheduleGridHeight =
-  (scheduleEndHour - scheduleStartHour) * scheduleHourHeight;
-const scheduleHours = Array.from(
-  { length: scheduleEndHour - scheduleStartHour + 1 },
-  (_, index) => scheduleStartHour + index,
-);
 
 const timeToMinutes = (time: string) => {
   const [hours = 0, minutes = 0] = time.split(':').map(Number);
@@ -1069,14 +1063,18 @@ const addMinutesToTime = (time: string, minutesToAdd: number) => {
 
 const calendarBlockMinutes = (
   block: Pick<ScheduleBlock | OfficeHourBlock, 'start' | 'end'>,
+  visibleEndMinutes = scheduleEndMinutes,
 ) => {
+  const rawStart = timeToMinutes(block.start);
+  const rawEndBase = timeToMinutes(block.end);
+  const rawEnd =
+    rawEndBase <= rawStart ? rawEndBase + 24 * 60 : rawEndBase;
   const start = Math.min(
-    scheduleEndMinutes,
-    Math.max(scheduleStartMinutes, timeToMinutes(block.start)),
+    visibleEndMinutes,
+    Math.max(scheduleStartMinutes, rawStart),
   );
-  const rawEnd = timeToMinutes(block.end);
   const end = Math.min(
-    scheduleEndMinutes,
+    visibleEndMinutes,
     Math.max(start + 15, rawEnd <= start ? start + 60 : rawEnd),
   );
 
@@ -1086,10 +1084,7 @@ const calendarBlockMinutes = (
 const formatBlockTimeRange = (
   block: Pick<ScheduleBlock | OfficeHourBlock, 'start' | 'end'>,
 ) => {
-  const { start, end } = calendarBlockMinutes(block);
-  return `${formatDisplayTime(minutesToTime(start))} - ${formatDisplayTime(
-    minutesToTime(end),
-  )}`;
+  return `${formatDisplayTime(block.start)} - ${formatDisplayTime(block.end)}`;
 };
 
 type AvailabilityWindow = {
@@ -1286,8 +1281,9 @@ const findCommonBreakWindows = (
 
 const scheduleBlockLayout = (
   block: Pick<ScheduleBlock | OfficeHourBlock, 'start' | 'end'>,
+  visibleEndMinutes = scheduleEndMinutes,
 ) => {
-  const { start, end } = calendarBlockMinutes(block);
+  const { start, end } = calendarBlockMinutes(block, visibleEndMinutes);
 
   return {
     top: ((start - scheduleStartMinutes) / 60) * scheduleHourHeight,
@@ -1298,27 +1294,36 @@ const scheduleBlockLayout = (
 const blockContainsTime = (
   block: Pick<ScheduleBlock, 'start' | 'end'>,
   time: string,
+  visibleEndMinutes = scheduleEndMinutes,
 ) => {
-  const { start, end } = calendarBlockMinutes(block);
+  const { start, end } = calendarBlockMinutes(block, visibleEndMinutes);
   const minutes = timeToMinutes(time);
   return minutes >= start - 10 && minutes <= end;
 };
 
-const assignmentDueTimeWithinSchedule = (assignment: Assignment) => {
+const assignmentDueTimeWithinSchedule = (
+  assignment: Assignment,
+  visibleEndMinutes = scheduleEndMinutes,
+) => {
   if (!assignment.dueTime) return false;
 
   const minutes = timeToMinutes(assignment.dueTime);
-  return minutes >= scheduleStartMinutes && minutes < scheduleEndMinutes;
+  return minutes >= scheduleStartMinutes && minutes < visibleEndMinutes;
 };
 
-const assignmentDueTimeOutsideSchedule = (assignment: Assignment) =>
-  Boolean(assignment.dueTime) && !assignmentDueTimeWithinSchedule(assignment);
+const assignmentDueTimeOutsideSchedule = (
+  assignment: Assignment,
+  visibleEndMinutes = scheduleEndMinutes,
+) =>
+  Boolean(assignment.dueTime) &&
+  !assignmentDueTimeWithinSchedule(assignment, visibleEndMinutes);
 
 const assignmentAttachesToBlock = (
   assignment: Assignment,
   date: string,
   block: ScheduleBlock,
   dayBlocks: ScheduleBlock[],
+  visibleEndMinutes = scheduleEndMinutes,
 ) => {
   if (assignment.dueDate !== date || assignment.courseId !== block.courseId) {
     return false;
@@ -1329,24 +1334,34 @@ const assignmentAttachesToBlock = (
     .sort((first, second) => first.start.localeCompare(second.start));
 
   if (!assignment.dueTime) return block.id === courseBlocks[0]?.id;
-  if (!assignmentDueTimeWithinSchedule(assignment)) return false;
+  if (!assignmentDueTimeWithinSchedule(assignment, visibleEndMinutes)) {
+    return false;
+  }
 
   const timedBlock = courseBlocks.find((item) =>
-    blockContainsTime(item, assignment.dueTime ?? ''),
+    blockContainsTime(item, assignment.dueTime ?? '', visibleEndMinutes),
   );
 
   return block.id === (timedBlock?.id ?? courseBlocks[0]?.id);
 };
 
 const formatScheduleHour = (hour: number) => {
-  if (hour === 12) return '12 pm';
-  if (hour > 12) return `${hour - 12} pm`;
-  return `${hour} am`;
+  const normalizedHour = ((hour % 24) + 24) % 24;
+  if (normalizedHour === 0) return '12 am';
+  if (normalizedHour === 12) return '12 pm';
+  if (normalizedHour > 12) return `${normalizedHour - 12} pm`;
+  return `${normalizedHour} am`;
 };
 
 const formatDueTime = (time?: string) => {
   if (!time) return '';
   return formatDisplayTime(time);
+};
+
+const shouldShowBlockType = (type?: string) => {
+  const cleanType = type?.trim();
+  if (!cleanType) return false;
+  return !/^lecture(?:\s+\d+)?$/i.test(cleanType);
 };
 
 const cleanPdfLine = (line: string) =>
@@ -3701,6 +3716,33 @@ export default function Home() {
         .sort((a, b) => a.start.localeCompare(b.start)),
     [data.schedule, todayDay],
   );
+  const scheduleViewEndHour = useMemo(() => {
+    const latestEndMinutes = [...data.schedule, ...data.officeHours].reduce(
+      (latest, block) => {
+        const start = timeToMinutes(block.start);
+        const endBase = timeToMinutes(block.end);
+        const end = endBase <= start ? endBase + 24 * 60 : endBase;
+        return Math.max(latest, end);
+      },
+      scheduleEndMinutes,
+    );
+
+    return Math.min(
+      24,
+      Math.max(scheduleEndHour, Math.ceil(latestEndMinutes / 60)),
+    );
+  }, [data.officeHours, data.schedule]);
+  const scheduleViewEndMinutes = scheduleViewEndHour * 60;
+  const scheduleViewGridHeight =
+    (scheduleViewEndHour - scheduleStartHour) * scheduleHourHeight;
+  const scheduleViewHours = useMemo(
+    () =>
+      Array.from(
+        { length: scheduleViewEndHour - scheduleStartHour + 1 },
+        (_hour, index) => scheduleStartHour + index,
+      ),
+    [scheduleViewEndHour],
+  );
   const weeklyDates = useMemo(
     () => days.map((_day, index) => addIsoDays(weeklyWeekStart, index)),
     [weeklyWeekStart],
@@ -3735,9 +3777,9 @@ export default function Home() {
       weeklyAssignments.filter(
         (assignment) =>
           weeklyDates.includes(assignment.dueDate) &&
-          assignmentDueTimeOutsideSchedule(assignment),
+          assignmentDueTimeOutsideSchedule(assignment, scheduleViewEndMinutes),
       ),
-    [weeklyAssignments, weeklyDates],
+    [scheduleViewEndMinutes, weeklyAssignments, weeklyDates],
   );
   const ownAvailabilityWindows = useMemo(
     () => buildAvailabilityWindows(data.schedule, data.officeHours),
@@ -4197,12 +4239,12 @@ export default function Home() {
     const startMinutes = clampNumber(
       timeToMinutes(block.start),
       scheduleStartMinutes,
-      scheduleEndMinutes - 5,
+      scheduleViewEndMinutes - 5,
     );
     const startEndMinutes = clampNumber(
       timeToMinutes(block.end),
       startMinutes + 5,
-      scheduleEndMinutes,
+      scheduleViewEndMinutes,
     );
 
     scheduleResizeRef.current = {
@@ -4240,7 +4282,7 @@ export default function Home() {
       const nextEnd = clampNumber(
         snapToFiveMinutes(resize.startEndMinutes + minuteDelta),
         resize.startMinutes + 5,
-        scheduleEndMinutes,
+        scheduleViewEndMinutes,
       );
 
       updateCalendarBlockTime(resize.target, resize.id, {
@@ -4967,8 +5009,12 @@ export default function Home() {
                 </label>
               </div>
               <WeeklyMobileAgenda
-                days={days}
-                weeklyDates={weeklyDates}
+                days={weeklyWeekendAssignments.length ? weeklyDays : days}
+                weeklyDates={
+                  weeklyWeekendAssignments.length
+                    ? weeklyAssignmentDates
+                    : weeklyDates
+                }
                 assignments={weeklyAssignments}
                 schedule={data.schedule}
                 officeHours={data.officeHours}
@@ -4976,6 +5022,7 @@ export default function Home() {
                 showClasses={weeklyShowClasses}
                 showOfficeHours={weeklyShowOfficeHours}
                 showAssignments={weeklyShowAssignments}
+                visibleEndMinutes={scheduleViewEndMinutes}
               />
               <div className="hidden min-w-[900px] md:block">
                 <div className="grid grid-cols-[64px_repeat(5,minmax(140px,1fr))] gap-0">
@@ -5050,17 +5097,17 @@ export default function Home() {
                   ) : null}
                   <div
                     className="relative border-r border-blue-200"
-                    style={{ height: scheduleGridHeight }}
+                    style={{ height: scheduleViewGridHeight }}
                   >
-                    {scheduleHours.map((hour) => (
+                    {scheduleViewHours.map((hour) => (
                       <span
                         key={hour}
                         className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
                         style={{
                           top:
                             ((hour - scheduleStartHour) /
-                              (scheduleEndHour - scheduleStartHour)) *
-                            scheduleGridHeight,
+                              (scheduleViewEndHour - scheduleStartHour)) *
+                            scheduleViewGridHeight,
                         }}
                       >
                         {formatScheduleHour(hour)}
@@ -5077,6 +5124,10 @@ export default function Home() {
                         if (
                           !weeklyShowAssignments ||
                           !assignment.dueTime ||
+                          !assignmentDueTimeWithinSchedule(
+                            assignment,
+                            scheduleViewEndMinutes,
+                          ) ||
                           assignment.dueDate !== date
                         ) {
                           return false;
@@ -5090,6 +5141,7 @@ export default function Home() {
                               date,
                               block,
                               dayScheduleBlocks,
+                              scheduleViewEndMinutes,
                             ),
                           )
                         );
@@ -5100,12 +5152,15 @@ export default function Home() {
                       <div
                         key={day}
                         className="schedule-day-column relative border-r border-blue-200"
-                        style={{ height: scheduleGridHeight }}
+                        style={{ height: scheduleViewGridHeight }}
                       >
                         {weeklyShowClasses
                           ? dayScheduleBlocks.map((block) => {
                               const course = courseById.get(block.courseId);
-                              const layout = scheduleBlockLayout(block);
+                              const layout = scheduleBlockLayout(
+                                block,
+                                scheduleViewEndMinutes,
+                              );
                               const compactBlock = layout.height < 58;
                               const blockAssignments = weeklyAssignments.filter(
                                 (assignment) =>
@@ -5115,6 +5170,7 @@ export default function Home() {
                                     date,
                                     block,
                                     dayScheduleBlocks,
+                                    scheduleViewEndMinutes,
                                   ),
                               );
                               const visibleBlockAssignments =
@@ -5122,8 +5178,15 @@ export default function Home() {
                                   0,
                                   compactBlock ? 1 : 2,
                                 );
+                              const hasAttachedAssignments =
+                                visibleBlockAssignments.length > 0;
                               const assignmentBadgeBackground =
                                 softenCourseColor(course?.color);
+                              const blockTypeLabel = shouldShowBlockType(
+                                block.type,
+                              )
+                                ? block.type
+                                : '';
                               return (
                                 <div
                                   key={block.id}
@@ -5135,51 +5198,47 @@ export default function Home() {
                                     height: layout.height,
                                     background: course?.color ?? '#dbeafe',
                                   }}
-                                  title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.location || course?.room || 'Location'}${block.type ? ` · ${block.type}` : ''}`}
+                                  title={`${course?.name ?? 'Course'} · ${formatBlockTimeRange(block)} · ${block.location || course?.room || 'Location'}${blockTypeLabel ? ` · ${blockTypeLabel}` : ''}`}
                                 >
-                                  <div
-                                    className={`flex h-full min-h-0 items-center justify-center ${
-                                      visibleBlockAssignments.length
-                                        ? compactBlock
-                                          ? 'pb-4'
-                                          : 'pb-6'
-                                        : ''
-                                    }`}
-                                  >
-                                    <div className="min-w-0 max-w-full">
-                                      <p
-                                        className={`truncate font-black leading-tight ${
-                                          compactBlock ? 'text-xs' : 'text-sm'
-                                        }`}
-                                      >
-                                        {course?.name ?? 'Course'}
-                                      </p>
-                                      <p
-                                        className={`text-xs leading-tight text-blue-950/70 ${
-                                          compactBlock ? 'truncate' : ''
-                                        }`}
-                                      >
-                                        {formatBlockTimeRange(block)}
-                                        {compactBlock
-                                          ? ` · ${block.location || course?.room || 'Location'}`
-                                          : ''}
-                                      </p>
-                                      {!compactBlock ? (
-                                        <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
-                                          {block.location ||
-                                            course?.room ||
-                                            'Location'}
+                                  <div className="flex h-full min-h-0 items-center justify-center">
+                                    <div
+                                      className={`grid min-w-0 max-w-full ${
+                                        hasAttachedAssignments ? 'gap-1' : ''
+                                      }`}
+                                    >
+                                      <div className="min-w-0">
+                                        <p
+                                          className={`truncate font-black leading-tight ${
+                                            compactBlock ? 'text-xs' : 'text-sm'
+                                          }`}
+                                        >
+                                          {course?.name ?? 'Course'}
                                         </p>
-                                      ) : null}
-                                      {!compactBlock && block.type ? (
-                                        <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
-                                          {block.type}
+                                        <p
+                                          className={`text-xs leading-tight text-blue-950/70 ${
+                                            compactBlock ? 'truncate' : ''
+                                          }`}
+                                        >
+                                          {formatBlockTimeRange(block)}
+                                          {compactBlock
+                                            ? ` · ${block.location || course?.room || 'Location'}`
+                                            : ''}
                                         </p>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                  {visibleBlockAssignments.length ? (
-                                    <div className="pointer-events-none absolute right-1.5 bottom-1.5 left-1.5 z-20 grid gap-0.5">
+                                        {!compactBlock ? (
+                                          <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                            {block.location ||
+                                              course?.room ||
+                                              'Location'}
+                                          </p>
+                                        ) : null}
+                                        {!compactBlock && blockTypeLabel ? (
+                                          <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
+                                            {blockTypeLabel}
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                      {hasAttachedAssignments ? (
+                                        <div className="pointer-events-none grid gap-0.5">
                                       {visibleBlockAssignments.map(
                                         (assignment) => (
                                           <p
@@ -5208,8 +5267,10 @@ export default function Home() {
                                           +{blockAssignments.length - 2} more
                                         </p>
                                       ) : null}
+                                        </div>
+                                      ) : null}
                                     </div>
-                                  ) : null}
+                                  </div>
                                 </div>
                               );
                             })
@@ -5220,7 +5281,10 @@ export default function Home() {
                               .sort((a, b) => a.start.localeCompare(b.start))
                               .map((block) => {
                                 const course = courseById.get(block.courseId);
-                                const layout = scheduleBlockLayout(block);
+                                const layout = scheduleBlockLayout(
+                                  block,
+                                  scheduleViewEndMinutes,
+                                );
                                 const compactBlock = layout.height < 64;
                                 return (
                                   <div
@@ -5269,13 +5333,16 @@ export default function Home() {
                           : null}
                         {timedAssignments.map((assignment) => {
                           const course = courseById.get(assignment.courseId);
-                          const layout = scheduleBlockLayout({
-                            start: assignment.dueTime ?? '09:00',
-                            end: addMinutesToTime(
-                              assignment.dueTime ?? '09:00',
-                              45,
-                            ),
-                          });
+                          const layout = scheduleBlockLayout(
+                            {
+                              start: assignment.dueTime ?? '09:00',
+                              end: addMinutesToTime(
+                                assignment.dueTime ?? '09:00',
+                                45,
+                              ),
+                            },
+                            scheduleViewEndMinutes,
+                          );
                           return (
                             <div
                               key={assignment.id}
@@ -5297,6 +5364,111 @@ export default function Home() {
                     );
                   })}
                 </div>
+                {weeklyShowAssignments &&
+                weeklyAfterHoursAssignments.length ? (
+                  <div className="mt-2 grid grid-cols-[64px_repeat(5,minmax(140px,1fr))] gap-0">
+                    <div className="border-r border-blue-200 bg-blue-50/30 px-1 py-2 text-center text-[10px] font-black uppercase leading-tight text-blue-950/55">
+                      After hours
+                    </div>
+                    {days.map((day, dayIndex) => {
+                      const date = weeklyDates[dayIndex];
+                      const dayAssignments =
+                        weeklyAfterHoursAssignments.filter(
+                          (assignment) => assignment.dueDate === date,
+                        );
+
+                      return (
+                        <div
+                          key={`${day}-after-hours`}
+                          className="min-h-14 min-w-0 border-r border-blue-200 bg-blue-50/30 px-1 py-1"
+                        >
+                          <div className="grid gap-1">
+                            {dayAssignments.map((assignment) => {
+                              const course = courseById.get(
+                                assignment.courseId,
+                              );
+                              return (
+                                <div
+                                  key={assignment.id}
+                                  className="overflow-hidden border border-blue-300 px-2 py-0.5 text-center text-xs font-black text-blue-950"
+                                  style={{
+                                    background: softenCourseColor(
+                                      course?.color,
+                                    ),
+                                  }}
+                                  title={`${assignment.type}: ${assignment.title} · Due ${formatDueTime(assignment.dueTime)}`}
+                                >
+                                  <p className="truncate">
+                                    {assignment.type}: {assignment.title}
+                                  </p>
+                                  <p className="truncate text-[11px] font-semibold text-blue-950/65">
+                                    Due {formatDueTime(assignment.dueTime)}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {weeklyShowAssignments && weeklyWeekendAssignments.length ? (
+                  <div className="mt-2 grid grid-cols-[64px_repeat(2,minmax(140px,1fr))] gap-0">
+                    <div className="border-r border-blue-200 bg-blue-50/30 px-1 py-2 text-center text-[10px] font-black uppercase leading-tight text-blue-950/55">
+                      Weekend
+                    </div>
+                    {weekendDays.map((day, index) => {
+                      const date = weeklyAssignmentDates[days.length + index];
+                      const dayAssignments = weeklyWeekendAssignments.filter(
+                        (assignment) => assignment.dueDate === date,
+                      );
+
+                      return (
+                        <div
+                          key={`${day}-weekend`}
+                          className="min-h-14 min-w-0 border-r border-blue-200 bg-blue-50/30 px-1 py-1"
+                        >
+                          <h3 className="mb-1 border border-blue-300 bg-amber-50 px-2 py-0.5 text-center text-xs font-black text-blue-950">
+                            {day}
+                            <span className="ml-1 font-bold text-blue-950/55">
+                              {formatMonthDay(date)}
+                            </span>
+                          </h3>
+                          <div className="grid gap-1">
+                            {dayAssignments.map((assignment) => {
+                              const course = courseById.get(
+                                assignment.courseId,
+                              );
+                              const dueLabel = assignment.dueTime
+                                ? `Due ${formatDueTime(assignment.dueTime)}`
+                                : formatMonthDay(assignment.dueDate);
+                              return (
+                                <div
+                                  key={assignment.id}
+                                  className="overflow-hidden border border-blue-300 px-2 py-0.5 text-center text-xs font-black text-blue-950"
+                                  style={{
+                                    background: softenCourseColor(
+                                      course?.color,
+                                    ),
+                                  }}
+                                  title={`${assignment.type}: ${assignment.title} · ${dueLabel}`}
+                                >
+                                  <p className="truncate">
+                                    {assignment.type}: {assignment.title}
+                                  </p>
+                                  <p className="truncate text-[11px] font-semibold text-blue-950/65">
+                                    {dueLabel}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             </section>
           </TabsContent>
@@ -6723,17 +6895,17 @@ export default function Home() {
                   ))}
                   <div
                     className="relative border-r border-blue-200"
-                    style={{ height: scheduleGridHeight }}
+                    style={{ height: scheduleViewGridHeight }}
                   >
-                    {scheduleHours.map((hour) => (
+                    {scheduleViewHours.map((hour) => (
                       <span
                         key={hour}
                         className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
                         style={{
                           top:
                             ((hour - scheduleStartHour) /
-                              (scheduleEndHour - scheduleStartHour)) *
-                            scheduleGridHeight,
+                              (scheduleViewEndHour - scheduleStartHour)) *
+                            scheduleViewGridHeight,
                         }}
                       >
                         {formatScheduleHour(hour)}
@@ -6744,14 +6916,17 @@ export default function Home() {
                     <div
                       key={day}
                       className="schedule-day-column relative border-r border-blue-200"
-                      style={{ height: scheduleGridHeight }}
+                      style={{ height: scheduleViewGridHeight }}
                     >
                       {data.schedule
                         .filter((block) => block.day === day)
                         .sort((a, b) => a.start.localeCompare(b.start))
                         .map((block) => {
                           const course = courseById.get(block.courseId);
-                          const layout = scheduleBlockLayout(block);
+                          const layout = scheduleBlockLayout(
+                            block,
+                            scheduleViewEndMinutes,
+                          );
                           const compactBlock = layout.height < 58;
                           return (
                             <div
@@ -6822,7 +6997,8 @@ export default function Home() {
                                         'Location'}
                                     </p>
                                   ) : null}
-                                  {!compactBlock && block.type ? (
+                                  {!compactBlock &&
+                                  shouldShowBlockType(block.type) ? (
                                     <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
                                       {block.type}
                                     </p>
@@ -6991,17 +7167,17 @@ export default function Home() {
                   ))}
                   <div
                     className="relative border-r border-blue-200"
-                    style={{ height: scheduleGridHeight }}
+                    style={{ height: scheduleViewGridHeight }}
                   >
-                    {scheduleHours.map((hour) => (
+                    {scheduleViewHours.map((hour) => (
                       <span
                         key={hour}
                         className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
                         style={{
                           top:
                             ((hour - scheduleStartHour) /
-                              (scheduleEndHour - scheduleStartHour)) *
-                            scheduleGridHeight,
+                              (scheduleViewEndHour - scheduleStartHour)) *
+                            scheduleViewGridHeight,
                         }}
                       >
                         {formatScheduleHour(hour)}
@@ -7012,14 +7188,17 @@ export default function Home() {
                     <div
                       key={day}
                       className="schedule-day-column relative border-r border-blue-200"
-                      style={{ height: scheduleGridHeight }}
+                      style={{ height: scheduleViewGridHeight }}
                     >
                       {data.officeHours
                         .filter((block) => block.day === day)
                         .sort((a, b) => a.start.localeCompare(b.start))
                         .map((block) => {
                           const course = courseById.get(block.courseId);
-                          const layout = scheduleBlockLayout(block);
+                          const layout = scheduleBlockLayout(
+                            block,
+                            scheduleViewEndMinutes,
+                          );
                           const compactBlock = layout.height < 64;
                           return (
                             <div
@@ -7777,6 +7956,7 @@ function WeeklyMobileAgenda({
   showClasses,
   showOfficeHours,
   showAssignments,
+  visibleEndMinutes,
 }: {
   days: string[];
   weeklyDates: string[];
@@ -7787,6 +7967,7 @@ function WeeklyMobileAgenda({
   showClasses: boolean;
   showOfficeHours: boolean;
   showAssignments: boolean;
+  visibleEndMinutes: number;
 }) {
   return (
     <div className="grid gap-3 md:hidden">
@@ -7811,7 +7992,13 @@ function WeeklyMobileAgenda({
             const course = courseById.get(block.courseId);
             const attachedAssignments = showAssignments
               ? assignments.filter((assignment) =>
-                  assignmentAttachesToBlock(assignment, date, block, dayBlocks),
+                  assignmentAttachesToBlock(
+                    assignment,
+                    date,
+                    block,
+                    dayBlocks,
+                    visibleEndMinutes,
+                  ),
                 )
               : [];
             attachedAssignments.forEach((assignment) =>
@@ -7836,7 +8023,7 @@ function WeeklyMobileAgenda({
                     <p className="truncate text-sm text-blue-950/70">
                       {block.location || course?.room || 'Location'}
                     </p>
-                    {block.type ? (
+                    {shouldShowBlockType(block.type) ? (
                       <p className="truncate text-xs font-semibold text-blue-950/65">
                         {block.type}
                       </p>
@@ -7915,7 +8102,12 @@ function WeeklyMobileAgenda({
               const course = courseById.get(assignment.courseId);
               items.push({
                 id: `assignment-${assignment.id}`,
-                sort: assignment.dueTime || '23:59',
+                sort: assignmentDueTimeOutsideSchedule(
+                  assignment,
+                  visibleEndMinutes,
+                )
+                  ? '99:99'
+                  : assignment.dueTime || '00:00',
                 node: (
                   <article
                     className="grid min-w-0 gap-1 overflow-hidden border-2 border-blue-200 p-3"
@@ -8390,7 +8582,7 @@ function ScheduleMobileList({
                         <p className="truncate text-sm text-blue-950/70">
                           {block.location || course?.room || 'Location'}
                         </p>
-                        {block.type ? (
+                        {shouldShowBlockType(block.type) ? (
                           <p className="truncate text-xs font-semibold text-blue-950/65">
                             {block.type}
                           </p>
@@ -8625,7 +8817,7 @@ function TodayClassList({
             <p className="truncate text-xs font-semibold text-blue-950/75">
               {block.location || course?.room || 'Location'}
             </p>
-            {block.type ? (
+            {shouldShowBlockType(block.type) ? (
               <p className="truncate text-xs font-semibold text-blue-950/70">
                 {block.type}
               </p>
