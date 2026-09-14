@@ -14,14 +14,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  applicationName: 'McGillTrack',
-  title: 'McGillTrack',
+  applicationName: 'Trakkit',
+  title: 'Trakkit',
   description:
     'A private-by-default academic tracker for assignments, schedules, notes, friends, focus time, and comfort pictures.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
-    title: 'McGillTrack',
+    title: 'Trakkit',
     statusBarStyle: 'default',
   },
   formatDetection: {

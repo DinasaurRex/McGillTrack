@@ -1,5 +1,6 @@
-const CACHE_PREFIX = 'mcgilltrack';
-const CACHE_VERSION = 'v2';
+const CACHE_PREFIX = 'trakkit';
+const LEGACY_CACHE_PREFIXES = ['mcgilltrack'];
+const CACHE_VERSION = 'v1';
 const STATIC_CACHE = `${CACHE_PREFIX}-${CACHE_VERSION}-static`;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const IS_LOCALHOST = LOCAL_HOSTS.has(self.location.hostname);
@@ -28,7 +29,12 @@ self.addEventListener('activate', (event) => {
         Promise.all(
           keys
             .filter(
-              (key) => key.startsWith(CACHE_PREFIX) && key !== STATIC_CACHE,
+              (key) =>
+                (key.startsWith(CACHE_PREFIX) ||
+                  LEGACY_CACHE_PREFIXES.some((prefix) =>
+                    key.startsWith(prefix),
+                  )) &&
+                key !== STATIC_CACHE,
             )
             .map((key) => caches.delete(key)),
         ),
@@ -68,7 +74,9 @@ self.addEventListener('fetch', (event) => {
       return fetch(request).then((response) => {
         if (response.ok) {
           const copy = response.clone();
-          caches.open(STATIC_CACHE).then((cache) => cache.put(request, copy));
+          void caches
+            .open(STATIC_CACHE)
+            .then((cache) => cache.put(request, copy));
         }
 
         return response;

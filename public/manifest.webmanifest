@@ -1,6 +1,6 @@
 {
-  "name": "McGillTrack",
-  "short_name": "McGillTrack",
+  "name": "Trakkit",
+  "short_name": "Trakkit",
   "description": "A private-by-default academic tracker for assignments, schedules, notes, friends, focus time, and comfort pictures.",
   "start_url": "/",
   "scope": "/",

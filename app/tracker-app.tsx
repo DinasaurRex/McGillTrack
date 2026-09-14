@@ -413,8 +413,10 @@ const softenCourseColor = (color = '#dbeafe', amount = 0.58) => {
 
   return `#${mix(red)}${mix(green)}${mix(blue)}`;
 };
-const storageKey = 'mcgilltrack-template-v1';
-const comfortStorageKey = 'mcgilltrack-comfort-images-v1';
+const legacyStorageKey = 'mcgilltrack-template-v1';
+const storageKey = 'trakkit-template-v1';
+const legacyComfortStorageKey = 'mcgilltrack-comfort-images-v1';
+const comfortStorageKey = 'trakkit-comfort-images-v1';
 const comfortMaxImages = 18;
 const comfortMaxImageDimension = 1400;
 const cloudSaveDelay = 400;
@@ -1064,6 +1066,7 @@ const addMinutesToTime = (time: string, minutesToAdd: number) => {
 const calendarBlockMinutes = (
   block: Pick<ScheduleBlock | OfficeHourBlock, 'start' | 'end'>,
   visibleEndMinutes = scheduleEndMinutes,
+  visibleStartMinutes = scheduleStartMinutes,
 ) => {
   const rawStart = timeToMinutes(block.start);
   const rawEndBase = timeToMinutes(block.end);
@@ -1071,7 +1074,7 @@ const calendarBlockMinutes = (
     rawEndBase <= rawStart ? rawEndBase + 24 * 60 : rawEndBase;
   const start = Math.min(
     visibleEndMinutes,
-    Math.max(scheduleStartMinutes, rawStart),
+    Math.max(visibleStartMinutes, rawStart),
   );
   const end = Math.min(
     visibleEndMinutes,
@@ -1282,11 +1285,16 @@ const findCommonBreakWindows = (
 const scheduleBlockLayout = (
   block: Pick<ScheduleBlock | OfficeHourBlock, 'start' | 'end'>,
   visibleEndMinutes = scheduleEndMinutes,
+  visibleStartMinutes = scheduleStartMinutes,
 ) => {
-  const { start, end } = calendarBlockMinutes(block, visibleEndMinutes);
+  const { start, end } = calendarBlockMinutes(
+    block,
+    visibleEndMinutes,
+    visibleStartMinutes,
+  );
 
   return {
-    top: ((start - scheduleStartMinutes) / 60) * scheduleHourHeight,
+    top: ((start - visibleStartMinutes) / 60) * scheduleHourHeight,
     height: Math.max(((end - start) / 60) * scheduleHourHeight, 34),
   };
 };
@@ -1295,8 +1303,13 @@ const blockContainsTime = (
   block: Pick<ScheduleBlock, 'start' | 'end'>,
   time: string,
   visibleEndMinutes = scheduleEndMinutes,
+  visibleStartMinutes = scheduleStartMinutes,
 ) => {
-  const { start, end } = calendarBlockMinutes(block, visibleEndMinutes);
+  const { start, end } = calendarBlockMinutes(
+    block,
+    visibleEndMinutes,
+    visibleStartMinutes,
+  );
   const minutes = timeToMinutes(time);
   return minutes >= start - 10 && minutes <= end;
 };
@@ -1304,19 +1317,25 @@ const blockContainsTime = (
 const assignmentDueTimeWithinSchedule = (
   assignment: Assignment,
   visibleEndMinutes = scheduleEndMinutes,
+  visibleStartMinutes = scheduleStartMinutes,
 ) => {
   if (!assignment.dueTime) return false;
 
   const minutes = timeToMinutes(assignment.dueTime);
-  return minutes >= scheduleStartMinutes && minutes < visibleEndMinutes;
+  return minutes >= visibleStartMinutes && minutes < visibleEndMinutes;
 };
 
 const assignmentDueTimeOutsideSchedule = (
   assignment: Assignment,
   visibleEndMinutes = scheduleEndMinutes,
+  visibleStartMinutes = scheduleStartMinutes,
 ) =>
   Boolean(assignment.dueTime) &&
-  !assignmentDueTimeWithinSchedule(assignment, visibleEndMinutes);
+  !assignmentDueTimeWithinSchedule(
+    assignment,
+    visibleEndMinutes,
+    visibleStartMinutes,
+  );
 
 const assignmentAttachesToBlock = (
   assignment: Assignment,
@@ -1324,6 +1343,7 @@ const assignmentAttachesToBlock = (
   block: ScheduleBlock,
   dayBlocks: ScheduleBlock[],
   visibleEndMinutes = scheduleEndMinutes,
+  visibleStartMinutes = scheduleStartMinutes,
 ) => {
   if (assignment.dueDate !== date || assignment.courseId !== block.courseId) {
     return false;
@@ -1334,12 +1354,23 @@ const assignmentAttachesToBlock = (
     .sort((first, second) => first.start.localeCompare(second.start));
 
   if (!assignment.dueTime) return block.id === courseBlocks[0]?.id;
-  if (!assignmentDueTimeWithinSchedule(assignment, visibleEndMinutes)) {
+  if (
+    !assignmentDueTimeWithinSchedule(
+      assignment,
+      visibleEndMinutes,
+      visibleStartMinutes,
+    )
+  ) {
     return false;
   }
 
   const timedBlock = courseBlocks.find((item) =>
-    blockContainsTime(item, assignment.dueTime ?? '', visibleEndMinutes),
+    blockContainsTime(
+      item,
+      assignment.dueTime ?? '',
+      visibleEndMinutes,
+      visibleStartMinutes,
+    ),
   );
 
   return block.id === (timedBlock?.id ?? courseBlocks[0]?.id);
@@ -2899,10 +2930,15 @@ export default function Home() {
 
   useEffect(() => {
     queueMicrotask(() => {
-      const saved = localStorage.getItem(comfortStorageKey);
+      const saved =
+        localStorage.getItem(comfortStorageKey) ??
+        localStorage.getItem(legacyComfortStorageKey);
       if (!saved) return;
 
       try {
+        if (!localStorage.getItem(comfortStorageKey)) {
+          localStorage.setItem(comfortStorageKey, saved);
+        }
         const parsed = JSON.parse(saved) as ComfortImage[];
         setComfortImages(
           parsed.filter(
@@ -2914,6 +2950,7 @@ export default function Home() {
         );
       } catch {
         localStorage.removeItem(comfortStorageKey);
+        localStorage.removeItem(legacyComfortStorageKey);
       }
     });
   }, []);
@@ -2982,9 +3019,14 @@ export default function Home() {
   useEffect(() => {
     queueMicrotask(() => {
       let hydrated = false;
-      const saved = localStorage.getItem(storageKey);
+      const saved =
+        localStorage.getItem(storageKey) ??
+        localStorage.getItem(legacyStorageKey);
       if (saved) {
         try {
+          if (!localStorage.getItem(storageKey)) {
+            localStorage.setItem(storageKey, saved);
+          }
           const parsed = normalizeData(
             JSON.parse(saved) as Partial<TrackerData>,
           );
@@ -3002,6 +3044,7 @@ export default function Home() {
           setFocusAssignmentId('');
         } catch {
           localStorage.removeItem(storageKey);
+          localStorage.removeItem(legacyStorageKey);
         }
       }
       if (!hydrated) {
@@ -3716,6 +3759,19 @@ export default function Home() {
         .sort((a, b) => a.start.localeCompare(b.start)),
     [data.schedule, todayDay],
   );
+  const scheduleViewStartMinutes = useMemo(() => {
+    const blocks = [...data.schedule, ...data.officeHours];
+    if (blocks.length === 0) return scheduleStartMinutes;
+
+    const earliestStartMinutes = blocks.reduce(
+      (earliest, block) => Math.min(earliest, timeToMinutes(block.start)),
+      scheduleStartMinutes,
+    );
+    const bufferedStartMinutes =
+      Math.floor((earliestStartMinutes - 45) / 15) * 15;
+
+    return Math.max(0, Math.min(scheduleStartMinutes, bufferedStartMinutes));
+  }, [data.officeHours, data.schedule]);
   const scheduleViewEndHour = useMemo(() => {
     const latestEndMinutes = [...data.schedule, ...data.officeHours].reduce(
       (latest, block) => {
@@ -3734,14 +3790,19 @@ export default function Home() {
   }, [data.officeHours, data.schedule]);
   const scheduleViewEndMinutes = scheduleViewEndHour * 60;
   const scheduleViewGridHeight =
-    (scheduleViewEndHour - scheduleStartHour) * scheduleHourHeight;
+    ((scheduleViewEndMinutes - scheduleViewStartMinutes) / 60) *
+    scheduleHourHeight;
   const scheduleViewHours = useMemo(
-    () =>
-      Array.from(
-        { length: scheduleViewEndHour - scheduleStartHour + 1 },
-        (_hour, index) => scheduleStartHour + index,
-      ),
-    [scheduleViewEndHour],
+    () => {
+      const firstHour = Math.ceil(scheduleViewStartMinutes / 60);
+      const lastHour = Math.floor(scheduleViewEndMinutes / 60);
+
+      return Array.from(
+        { length: lastHour - firstHour + 1 },
+        (_hour, index) => firstHour + index,
+      );
+    },
+    [scheduleViewEndMinutes, scheduleViewStartMinutes],
   );
   const weeklyDates = useMemo(
     () => days.map((_day, index) => addIsoDays(weeklyWeekStart, index)),
@@ -3777,9 +3838,36 @@ export default function Home() {
       weeklyAssignments.filter(
         (assignment) =>
           weeklyDates.includes(assignment.dueDate) &&
-          assignmentDueTimeOutsideSchedule(assignment, scheduleViewEndMinutes),
+          assignmentDueTimeOutsideSchedule(
+            assignment,
+            scheduleViewEndMinutes,
+            scheduleViewStartMinutes,
+          ),
       ),
-    [scheduleViewEndMinutes, weeklyAssignments, weeklyDates],
+    [
+      scheduleViewEndMinutes,
+      scheduleViewStartMinutes,
+      weeklyAssignments,
+      weeklyDates,
+    ],
+  );
+  const hasWeeklyFloatingAssignments = useMemo(
+    () =>
+      weeklyAssignments.some((assignment) => {
+        if (assignment.dueTime || !weeklyDates.includes(assignment.dueDate)) {
+          return false;
+        }
+
+        const day = days[weeklyDates.indexOf(assignment.dueDate)];
+        return (
+          !weeklyShowClasses ||
+          !data.schedule.some(
+            (block) =>
+              block.day === day && block.courseId === assignment.courseId,
+          )
+        );
+      }),
+    [data.schedule, weeklyAssignments, weeklyDates, weeklyShowClasses],
   );
   const ownAvailabilityWindows = useMemo(
     () => buildAvailabilityWindows(data.schedule, data.officeHours),
@@ -3910,7 +3998,7 @@ export default function Home() {
 
   const promptInstallApp = async () => {
     if (isStandaloneApp) {
-      setPwaMessage('McGillTrack is already running like an app.');
+      setPwaMessage('Trakkit is already running like an app.');
       return;
     }
 
@@ -3926,7 +4014,7 @@ export default function Home() {
     setInstallPrompt(null);
     setPwaMessage(
       choice.outcome === 'accepted'
-        ? 'McGillTrack is installing.'
+        ? 'Trakkit is installing.'
         : 'Install dismissed for now.',
     );
   };
@@ -3953,7 +4041,7 @@ export default function Home() {
       return;
     }
 
-    const title = 'McGillTrack reminders are ready';
+    const title = 'Trakkit reminders are ready';
     const options: NotificationOptions = {
       body: 'This is the notification path we will use for deadlines and timers.',
       icon: '/assets/pwa-icon-192.png',
@@ -4238,7 +4326,7 @@ export default function Home() {
 
     const startMinutes = clampNumber(
       timeToMinutes(block.start),
-      scheduleStartMinutes,
+      scheduleViewStartMinutes,
       scheduleViewEndMinutes - 5,
     );
     const startEndMinutes = clampNumber(
@@ -4268,7 +4356,7 @@ export default function Home() {
       if (resize.edge === 'start') {
         const nextStart = clampNumber(
           snapToFiveMinutes(resize.startMinutes + minuteDelta),
-          scheduleStartMinutes,
+          scheduleViewStartMinutes,
           resize.startEndMinutes - 5,
         );
 
@@ -4516,7 +4604,7 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'mcgilltrack-data.json';
+    link.download = 'trakkit-data.json';
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -4716,7 +4804,7 @@ export default function Home() {
                 {dateLabel}
               </p>
               <h1 className="truncate text-2xl font-black tracking-normal sm:text-4xl">
-                McGillTrack
+                Trakkit
               </h1>
             </div>
           </div>
@@ -5023,6 +5111,7 @@ export default function Home() {
                 showOfficeHours={weeklyShowOfficeHours}
                 showAssignments={weeklyShowAssignments}
                 visibleEndMinutes={scheduleViewEndMinutes}
+                visibleStartMinutes={scheduleViewStartMinutes}
               />
               <div className="hidden min-w-[900px] md:block">
                 <div className="grid grid-cols-[64px_repeat(5,minmax(140px,1fr))] gap-0">
@@ -5038,7 +5127,7 @@ export default function Home() {
                       </span>
                     </div>
                   ))}
-                  {weeklyShowAssignments ? (
+                  {weeklyShowAssignments && hasWeeklyFloatingAssignments ? (
                     <>
                       <div className="min-h-12 border-r border-blue-200 bg-blue-50/30" />
                       {days.map((day, dayIndex) => {
@@ -5105,8 +5194,9 @@ export default function Home() {
                         className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
                         style={{
                           top:
-                            ((hour - scheduleStartHour) /
-                              (scheduleViewEndHour - scheduleStartHour)) *
+                            ((hour * 60 - scheduleViewStartMinutes) /
+                              (scheduleViewEndMinutes -
+                                scheduleViewStartMinutes)) *
                             scheduleViewGridHeight,
                         }}
                       >
@@ -5127,6 +5217,7 @@ export default function Home() {
                           !assignmentDueTimeWithinSchedule(
                             assignment,
                             scheduleViewEndMinutes,
+                            scheduleViewStartMinutes,
                           ) ||
                           assignment.dueDate !== date
                         ) {
@@ -5142,6 +5233,7 @@ export default function Home() {
                               block,
                               dayScheduleBlocks,
                               scheduleViewEndMinutes,
+                              scheduleViewStartMinutes,
                             ),
                           )
                         );
@@ -5160,6 +5252,7 @@ export default function Home() {
                               const layout = scheduleBlockLayout(
                                 block,
                                 scheduleViewEndMinutes,
+                                scheduleViewStartMinutes,
                               );
                               const compactBlock = layout.height < 58;
                               const blockAssignments = weeklyAssignments.filter(
@@ -5171,6 +5264,7 @@ export default function Home() {
                                     block,
                                     dayScheduleBlocks,
                                     scheduleViewEndMinutes,
+                                    scheduleViewStartMinutes,
                                   ),
                               );
                               const visibleBlockAssignments =
@@ -5284,6 +5378,7 @@ export default function Home() {
                                 const layout = scheduleBlockLayout(
                                   block,
                                   scheduleViewEndMinutes,
+                                  scheduleViewStartMinutes,
                                 );
                                 const compactBlock = layout.height < 64;
                                 return (
@@ -5342,6 +5437,7 @@ export default function Home() {
                               ),
                             },
                             scheduleViewEndMinutes,
+                            scheduleViewStartMinutes,
                           );
                           return (
                             <div
@@ -6148,7 +6244,7 @@ export default function Home() {
                     </span>
                   </div>
                   <p className="max-w-3xl text-sm font-semibold text-blue-950/70">
-                    Add McGillTrack to the Home Screen and prepare reminders for
+                    Add Trakkit to the Home Screen and prepare reminders for
                     the notification work coming next.
                   </p>
                 </div>
@@ -6174,14 +6270,14 @@ export default function Home() {
                     <h3 className="text-lg font-black">Install</h3>
                     <p className="text-sm font-semibold text-blue-950/65">
                       {isStandaloneApp
-                        ? 'McGillTrack is running from the Home Screen.'
+                        ? 'Trakkit is running from the Home Screen.'
                         : 'Use the browser install prompt where available.'}
                     </p>
                   </div>
                 </div>
                 <Button type="button" onClick={() => void promptInstallApp()}>
                   <Download data-icon="inline-start" />
-                  {installPrompt ? 'Install McGillTrack' : 'Show iPad steps'}
+                  {installPrompt ? 'Install Trakkit' : 'Show iPad steps'}
                 </Button>
                 <div className="border-2 border-blue-100 bg-blue-50/70 p-3 text-sm font-semibold text-blue-950/70">
                   On iPad or iPhone: Share, then Add to Home Screen.
@@ -6903,8 +6999,9 @@ export default function Home() {
                         className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
                         style={{
                           top:
-                            ((hour - scheduleStartHour) /
-                              (scheduleViewEndHour - scheduleStartHour)) *
+                            ((hour * 60 - scheduleViewStartMinutes) /
+                              (scheduleViewEndMinutes -
+                                scheduleViewStartMinutes)) *
                             scheduleViewGridHeight,
                         }}
                       >
@@ -6926,6 +7023,7 @@ export default function Home() {
                           const layout = scheduleBlockLayout(
                             block,
                             scheduleViewEndMinutes,
+                            scheduleViewStartMinutes,
                           );
                           const compactBlock = layout.height < 58;
                           return (
@@ -7175,8 +7273,9 @@ export default function Home() {
                         className="absolute right-2 -translate-y-1/2 text-xs font-semibold text-blue-950/60"
                         style={{
                           top:
-                            ((hour - scheduleStartHour) /
-                              (scheduleViewEndHour - scheduleStartHour)) *
+                            ((hour * 60 - scheduleViewStartMinutes) /
+                              (scheduleViewEndMinutes -
+                                scheduleViewStartMinutes)) *
                             scheduleViewGridHeight,
                         }}
                       >
@@ -7198,6 +7297,7 @@ export default function Home() {
                           const layout = scheduleBlockLayout(
                             block,
                             scheduleViewEndMinutes,
+                            scheduleViewStartMinutes,
                           );
                           const compactBlock = layout.height < 64;
                           return (
@@ -7957,6 +8057,7 @@ function WeeklyMobileAgenda({
   showOfficeHours,
   showAssignments,
   visibleEndMinutes,
+  visibleStartMinutes,
 }: {
   days: string[];
   weeklyDates: string[];
@@ -7968,6 +8069,7 @@ function WeeklyMobileAgenda({
   showOfficeHours: boolean;
   showAssignments: boolean;
   visibleEndMinutes: number;
+  visibleStartMinutes: number;
 }) {
   return (
     <div className="grid gap-3 md:hidden">
@@ -7998,6 +8100,7 @@ function WeeklyMobileAgenda({
                     block,
                     dayBlocks,
                     visibleEndMinutes,
+                    visibleStartMinutes,
                   ),
                 )
               : [];
@@ -8105,6 +8208,7 @@ function WeeklyMobileAgenda({
                 sort: assignmentDueTimeOutsideSchedule(
                   assignment,
                   visibleEndMinutes,
+                  visibleStartMinutes,
                 )
                   ? '99:99'
                   : assignment.dueTime || '00:00',

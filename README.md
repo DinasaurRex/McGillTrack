@@ -1,1 +1,1 @@
-# McGillTrack
+# Trakkit
