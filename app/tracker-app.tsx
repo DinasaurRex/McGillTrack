@@ -191,12 +191,20 @@ type ReminderRule = {
   unit: ReminderUnit;
 };
 
+type MorningBriefSettings = {
+  enabled: boolean;
+  sendTime: string;
+  busyDayClassThreshold: number;
+  assignmentLimit: number;
+};
+
 type NotificationSettings = {
   enabled: boolean;
   quietHoursEnabled: boolean;
   quietStart: string;
   quietEnd: string;
   defaultAssignmentDueTime: string;
+  morningBrief: MorningBriefSettings;
   rules: Record<NotificationRuleKey, ReminderRule>;
 };
 
@@ -611,6 +619,12 @@ const createDefaultNotificationSettings = (): NotificationSettings => ({
   quietStart: '22:00',
   quietEnd: '07:30',
   defaultAssignmentDueTime: '23:59',
+  morningBrief: {
+    enabled: true,
+    sendTime: '08:00',
+    busyDayClassThreshold: 4,
+    assignmentLimit: 3,
+  },
   rules: {
     classes: { enabled: true, amount: 15, unit: 'minutes' },
     officeHours: { enabled: false, amount: 30, unit: 'minutes' },
@@ -2561,6 +2575,32 @@ const normalizeReminderRule = (
   };
 };
 
+const normalizeMorningBriefSettings = (
+  incoming: Partial<MorningBriefSettings> | undefined,
+  fallback: MorningBriefSettings,
+): MorningBriefSettings => {
+  const busyDayClassThreshold = Number(
+    incoming?.busyDayClassThreshold ?? fallback.busyDayClassThreshold,
+  );
+  const assignmentLimit = Number(
+    incoming?.assignmentLimit ?? fallback.assignmentLimit,
+  );
+
+  return {
+    enabled:
+      typeof incoming?.enabled === 'boolean'
+        ? incoming.enabled
+        : fallback.enabled,
+    sendTime: incoming?.sendTime || fallback.sendTime,
+    busyDayClassThreshold: Number.isFinite(busyDayClassThreshold)
+      ? Math.max(1, Math.round(busyDayClassThreshold))
+      : fallback.busyDayClassThreshold,
+    assignmentLimit: Number.isFinite(assignmentLimit)
+      ? Math.max(0, Math.round(assignmentLimit))
+      : fallback.assignmentLimit,
+  };
+};
+
 const normalizeNotificationSettings = (
   incoming?: Partial<NotificationSettings>,
 ): NotificationSettings => {
@@ -2582,6 +2622,10 @@ const normalizeNotificationSettings = (
     quietEnd: incoming?.quietEnd || fallback.quietEnd,
     defaultAssignmentDueTime:
       incoming?.defaultAssignmentDueTime || fallback.defaultAssignmentDueTime,
+    morningBrief: normalizeMorningBriefSettings(
+      incoming?.morningBrief,
+      fallback.morningBrief,
+    ),
     rules: notificationRuleMeta.reduce(
       (rules, meta) => ({
         ...rules,
