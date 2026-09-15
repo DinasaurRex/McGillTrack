@@ -74,7 +74,10 @@ type Course = {
   weeklyPonderation?: string;
   credits: number;
   color: string;
+  includeInGrades: boolean;
 };
+
+type GradeScale = 'off' | '4.0' | '4.3';
 
 type Assignment = {
   id: string;
@@ -272,6 +275,7 @@ type TrackerData = {
   shopping: ShoppingItem[];
   homework: HomeworkItem[];
   todos: TodoItem[];
+  gradeScale: GradeScale;
   notifications: NotificationSettings;
 };
 
@@ -366,6 +370,42 @@ const assignmentTypes: AssignmentType[] = [
   'Final',
 ];
 const examAssignmentTypes: AssignmentType[] = ['Test', 'Midterm', 'Final'];
+const gradeScaleOptions: { value: GradeScale; label: string }[] = [
+  { value: '4.0', label: '4.0 GPA' },
+  { value: '4.3', label: '4.3 GPA' },
+  { value: 'off', label: 'Do not show GPA' },
+];
+const gradeScaleTables: Record<
+  Exclude<GradeScale, 'off'>,
+  { min: number; letter: string; points: number }[]
+> = {
+  '4.0': [
+    { min: 85, letter: 'A', points: 4.0 },
+    { min: 80, letter: 'A-', points: 3.7 },
+    { min: 75, letter: 'B+', points: 3.3 },
+    { min: 70, letter: 'B', points: 3.0 },
+    { min: 65, letter: 'B-', points: 2.7 },
+    { min: 60, letter: 'C+', points: 2.3 },
+    { min: 55, letter: 'C', points: 2.0 },
+    { min: 50, letter: 'D', points: 1.0 },
+    { min: 0, letter: 'F', points: 0 },
+  ],
+  '4.3': [
+    { min: 90, letter: 'A+', points: 4.3 },
+    { min: 85, letter: 'A', points: 4.0 },
+    { min: 80, letter: 'A-', points: 3.7 },
+    { min: 77, letter: 'B+', points: 3.3 },
+    { min: 73, letter: 'B', points: 3.0 },
+    { min: 70, letter: 'B-', points: 2.7 },
+    { min: 67, letter: 'C+', points: 2.3 },
+    { min: 63, letter: 'C', points: 2.0 },
+    { min: 60, letter: 'C-', points: 1.7 },
+    { min: 57, letter: 'D+', points: 1.3 },
+    { min: 53, letter: 'D', points: 1.0 },
+    { min: 50, letter: 'D-', points: 0.7 },
+    { min: 0, letter: 'F', points: 0 },
+  ],
+};
 const weeks = [
   'Week 1',
   'Week 2',
@@ -659,6 +699,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       weeklyPonderation: '',
       credits: 3,
       color: '#dbeafe',
+      includeInGrades: true,
     },
     {
       id: 'course-2',
@@ -673,6 +714,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       weeklyPonderation: '',
       credits: 3,
       color: '#fef3c7',
+      includeInGrades: true,
     },
     {
       id: 'course-3',
@@ -687,6 +729,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       weeklyPonderation: '',
       credits: 3,
       color: '#dbeafe',
+      includeInGrades: true,
     },
   ],
   assignments: [
@@ -812,6 +855,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       done: false,
     },
   ],
+  gradeScale: '4.0',
   notifications: createDefaultNotificationSettings(),
 });
 
@@ -1926,6 +1970,7 @@ const mergeStudentScheduleImport = (
         instructor: importedCourse.instructor || existing.instructor,
         section: section || existing.section,
         credits: importedCourse.credits || existing.credits,
+        includeInGrades: existing.includeInGrades,
       };
       updatedCourses += 1;
       return;
@@ -1946,6 +1991,7 @@ const mergeStudentScheduleImport = (
       weeklyPonderation: '',
       credits: importedCourse.credits,
       color: courseColors[nextCourses.length % courseColors.length],
+      includeInGrades: true,
     });
     addedCourses += 1;
   });
@@ -2255,6 +2301,7 @@ const readExcelSetupCourses = (workbook: ExcelWorkbook) => {
       weeklyPonderation: '',
       credits: 3,
       color: courseColors[courses.length % courseColors.length],
+      includeInGrades: true,
     });
   }
 
@@ -2405,6 +2452,7 @@ const getOrCreateImportedCourse = (courses: Course[], subject: string) => {
     weeklyPonderation: '',
     credits: 3,
     color: courseColors[courses.length % courseColors.length],
+    includeInGrades: true,
   };
   courses.push(course);
   return course;
@@ -2565,6 +2613,7 @@ const parseAnnabelleExcelWorkbook = (
       shopping: [],
       homework: [],
       todos: [],
+      gradeScale: '4.0',
       notifications: createDefaultNotificationSettings(),
     },
     courses: courses.length,
@@ -2576,6 +2625,32 @@ const parseAnnabelleExcelWorkbook = (
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value: number) => (Math.round(value * 10) / 10).toFixed(1);
+const formatGpa = (value: number) => {
+  const rounded = Math.round(value * 100) / 100;
+  const hasUsefulHundredths = Math.abs(rounded * 10 - Math.round(rounded * 10)) > 0.001;
+
+  return hasUsefulHundredths ? rounded.toFixed(2) : rounded.toFixed(1);
+};
+
+const gradeFromPercent = (value: number, scale: GradeScale) => {
+  if (scale === 'off') return null;
+  const percentValue = clampNumber(value, 0, 100);
+  return gradeScaleTables[scale].find((grade) => percentValue >= grade.min);
+};
+
+const formatGradeDetail = (ratio: number, scale: GradeScale) => {
+  const grade = gradeFromPercent(ratio * 100, scale);
+  return grade ? `${grade.letter} · ${formatGpa(grade.points)}` : '-';
+};
+
+const normalizeCourses = (courses = defaultData.courses): Course[] =>
+  courses.map((course) => ({
+    ...course,
+    includeInGrades:
+      typeof course.includeInGrades === 'boolean'
+        ? course.includeInGrades
+        : course.credits > 0,
+  }));
 
 const normalizeAssignments = (
   assignments = defaultData.assignments,
@@ -2687,7 +2762,7 @@ const normalizeData = (incoming: Partial<TrackerData>): TrackerData => {
   return {
     termStartDate,
     termEndDate,
-    courses: incoming.courses ?? defaultData.courses,
+    courses: normalizeCourses(incoming.courses),
     assignments: normalizeAssignments(incoming.assignments).map(
       (assignment) => ({
         ...assignment,
@@ -2706,6 +2781,10 @@ const normalizeData = (incoming: Partial<TrackerData>): TrackerData => {
     shopping: incoming.shopping ?? defaultData.shopping,
     homework: incoming.homework ?? defaultData.homework,
     todos: incoming.todos ?? defaultData.todos,
+    gradeScale:
+      incoming.gradeScale && ['off', '4.0', '4.3'].includes(incoming.gradeScale)
+        ? incoming.gradeScale
+        : defaultData.gradeScale,
     notifications: normalizeNotificationSettings(incoming.notifications),
   };
 };
@@ -3095,6 +3174,7 @@ export default function Home() {
     weeklyPonderation: '',
     credits: 3,
     color: courseColors[0],
+    includeInGrades: true,
   });
   const [assignmentDraft, setAssignmentDraft] = useState<Assignment>(
     blankAssignment(defaultData.courses[0].id),
@@ -3952,27 +4032,111 @@ export default function Home() {
     return { total, done, overdue, dueThisWeek };
   }, [data.assignments, data.termEndDate, data.termStartDate]);
 
+  const academicCourses = useMemo(
+    () =>
+      data.courses.filter(
+        (course) => course.includeInGrades && course.credits > 0,
+      ),
+    [data.courses],
+  );
+  const totalCredits = academicCourses.reduce(
+    (sum, course) => sum + course.credits,
+    0,
+  );
+  const courseCreditShareById = useMemo(
+    () =>
+      new Map(
+        academicCourses.map((course) => [
+          course.id,
+          totalCredits > 0 ? course.credits / totalCredits : 0,
+        ]),
+      ),
+    [academicCourses, totalCredits],
+  );
+  const academicCourseIds = useMemo(
+    () => new Set(academicCourses.map((course) => course.id)),
+    [academicCourses],
+  );
   const gradedAssignments = data.assignments.filter(
     (assignment) =>
+      academicCourseIds.has(assignment.courseId) &&
       assignment.graded && assignment.maxScore > 0 && assignment.weight > 0,
   );
   const weightedEarned = gradedAssignments.reduce(
     (sum, assignment) =>
-      sum + (assignment.score / assignment.maxScore) * assignment.weight,
+      sum +
+      (assignment.score / assignment.maxScore) *
+        assignment.weight *
+        (courseCreditShareById.get(assignment.courseId) ?? 0),
     0,
   );
   const weightedPossible = gradedAssignments.reduce(
-    (sum, assignment) => sum + assignment.weight,
+    (sum, assignment) =>
+      sum +
+      assignment.weight * (courseCreditShareById.get(assignment.courseId) ?? 0),
     0,
   );
   const currentGrade =
     weightedPossible > 0 ? weightedEarned / weightedPossible : 0;
-  const totalHours = data.hours.reduce(
-    (sum, hour) => sum + hoursBetween(hour.start, hour.end),
+  const courseGradeSummaries = useMemo(
+    () =>
+      academicCourses.map((course) => {
+        const entries = data.assignments.filter(
+          (assignment) =>
+            assignment.courseId === course.id &&
+            assignment.graded &&
+            assignment.weight > 0 &&
+            assignment.maxScore > 0,
+        );
+        const possible = entries.reduce(
+          (sum, assignment) => sum + assignment.weight,
+          0,
+        );
+        const earned = entries.reduce(
+          (sum, assignment) =>
+            sum + (assignment.score / assignment.maxScore) * assignment.weight,
+          0,
+        );
+        const ratio = possible > 0 ? earned / possible : null;
+
+        return {
+          course,
+          possible,
+          earned,
+          ratio,
+          percentLabel: ratio !== null ? percent(ratio) : '-',
+          gpaLabel:
+            ratio !== null && data.gradeScale !== 'off'
+              ? formatGradeDetail(ratio, data.gradeScale)
+              : null,
+        };
+      }),
+    [academicCourses, data.assignments, data.gradeScale],
+  );
+  const currentGpaCredits = courseGradeSummaries.reduce(
+    (sum, summary) =>
+      summary.gpaLabel && summary.course.credits > 0
+        ? sum + summary.course.credits
+        : sum,
     0,
   );
-  const totalCredits = data.courses.reduce(
-    (sum, course) => sum + course.credits,
+  const currentGpaPoints = courseGradeSummaries.reduce((sum, summary) => {
+    if (!summary.gpaLabel || summary.course.credits <= 0 || summary.ratio === null) {
+      return sum;
+    }
+    const grade = gradeFromPercent(summary.ratio * 100, data.gradeScale);
+    return grade ? sum + grade.points * summary.course.credits : sum;
+  }, 0);
+  const currentGradeDisplay =
+    data.gradeScale === 'off'
+      ? weightedPossible > 0
+        ? percent(currentGrade)
+        : '-'
+      : currentGpaCredits > 0
+        ? formatGpa(currentGpaPoints / currentGpaCredits)
+        : '-';
+  const totalHours = data.hours.reduce(
+    (sum, hour) => sum + hoursBetween(hour.start, hour.end),
     0,
   );
   const completionRate =
@@ -4793,6 +4957,7 @@ export default function Home() {
           weeklyPonderation: '',
           credits: 0,
           color,
+          includeInGrades: false,
         },
       ],
     }));
@@ -4820,6 +4985,7 @@ export default function Home() {
       weeklyPonderation: '',
       credits: 3,
       color: courseColors[data.courses.length % courseColors.length],
+      includeInGrades: true,
     });
   };
 
@@ -5260,7 +5426,7 @@ export default function Home() {
           />
           <MiniStat
             label="Current Grade"
-            value={weightedPossible > 0 ? percent(currentGrade) : '-'}
+            value={currentGradeDisplay}
             icon={<GraduationCap className="size-5" />}
           />
           <MiniStat
@@ -7429,6 +7595,20 @@ export default function Home() {
                 label="Use course color"
                 onChange={(color) => setCourseDraft({ ...courseDraft, color })}
               />
+              <label className="flex items-center gap-2 text-sm font-black text-blue-950">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-blue-500"
+                  checked={courseDraft.includeInGrades}
+                  onChange={(event) =>
+                    setCourseDraft({
+                      ...courseDraft,
+                      includeInGrades: event.target.checked,
+                    })
+                  }
+                />
+                Include in gradebook
+              </label>
               <Button onClick={addCourse}>
                 <Plus data-icon="inline-start" />
                 Add course
@@ -7455,6 +7635,7 @@ export default function Home() {
                       <TableHead>Email</TableHead>
                       <TableHead>Section</TableHead>
                       <TableHead>Credits</TableHead>
+                      <TableHead>Grades</TableHead>
                       <TableHead />
                     </TableRow>
                   </TableHeader>
@@ -7562,6 +7743,23 @@ export default function Home() {
                             }
                             className="w-20"
                           />
+                        </TableCell>
+                        <TableCell>
+                          <label className="flex items-center gap-2 text-sm font-semibold">
+                            <input
+                              type="checkbox"
+                              className="size-4 accent-blue-500"
+                              checked={course.includeInGrades}
+                              onChange={(event) =>
+                                updateCourse(
+                                  course.id,
+                                  'includeInGrades',
+                                  event.target.checked,
+                                )
+                              }
+                            />
+                            Counts
+                          </label>
                         </TableCell>
                         <TableCell>
                           <Button
@@ -7684,6 +7882,23 @@ export default function Home() {
 
             <aside className="pixel-panel grid content-start gap-4 p-4">
               <h2 className="text-xl font-black">Grade Summary</h2>
+              <Field label="GPA Scale">
+                <NativeSelect
+                  value={data.gradeScale}
+                  onChange={(event) =>
+                    setData((current) => ({
+                      ...current,
+                      gradeScale: event.target.value as GradeScale,
+                    }))
+                  }
+                >
+                  {gradeScaleOptions.map((option) => (
+                    <NativeSelectOption key={option.value} value={option.value}>
+                      {option.label}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
               <MiniGrade
                 label="Weight received"
                 value={`${oneDecimal(weightedPossible)}%`}
@@ -7696,41 +7911,38 @@ export default function Home() {
                 label="Current average"
                 value={weightedPossible > 0 ? percent(currentGrade) : '-'}
               />
+              {data.gradeScale !== 'off' ? (
+                <MiniGrade label="Current GPA" value={currentGradeDisplay} />
+              ) : null}
               <div className="grid gap-2 border-2 border-blue-200 bg-white p-3">
-                {data.courses.map((course) => {
-                  const entries = data.assignments.filter(
-                    (assignment) =>
-                      assignment.courseId === course.id &&
-                      assignment.graded &&
-                      assignment.weight > 0 &&
-                      assignment.maxScore > 0,
-                  );
-                  const possible = entries.reduce(
-                    (sum, assignment) => sum + assignment.weight,
-                    0,
-                  );
-                  const earned = entries.reduce(
-                    (sum, assignment) =>
-                      sum +
-                      (assignment.score / assignment.maxScore) *
-                        assignment.weight,
-                    0,
-                  );
+                {courseGradeSummaries.map((summary) => {
                   return (
-                    <div key={course.id} className="grid gap-1">
-                      <div className="flex items-center justify-between gap-3 text-sm font-bold">
-                        <span>{course.name}</span>
-                        <span>
-                          {possible > 0 ? percent(earned / possible) : '-'}
+                    <div key={summary.course.id} className="grid gap-1">
+                      <div className="flex items-start justify-between gap-3 text-sm font-bold">
+                        <span>{summary.course.name}</span>
+                        <span className="text-right">
+                          {summary.percentLabel}
+                          {summary.gpaLabel ? (
+                            <span className="block text-xs font-black text-blue-950/60">
+                              {summary.gpaLabel}
+                            </span>
+                          ) : null}
                         </span>
                       </div>
                       <Progress
-                        value={possible > 0 ? (earned / possible) * 100 : 0}
+                        value={
+                          summary.ratio !== null ? summary.ratio * 100 : 0
+                        }
                         className="h-2"
                       />
                     </div>
                   );
                 })}
+                {courseGradeSummaries.length === 0 ? (
+                  <p className="text-sm font-semibold text-blue-950/65">
+                    No gradebook courses selected.
+                  </p>
+                ) : null}
               </div>
             </aside>
           </TabsContent>
@@ -9447,6 +9659,21 @@ function CourseMobileCards({
               />
             </Field>
           </div>
+          <label className="flex items-center gap-2 text-sm font-black text-blue-950">
+            <input
+              type="checkbox"
+              className="size-4 accent-blue-500"
+              checked={course.includeInGrades}
+              onChange={(event) =>
+                updateCourse(
+                  course.id,
+                  'includeInGrades',
+                  event.target.checked,
+                )
+              }
+            />
+            Include in gradebook
+          </label>
           <Field label="Room">
             <TextInput
               value={course.room}
