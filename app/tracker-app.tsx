@@ -5624,7 +5624,7 @@ export default function Home() {
             value="overview"
             className="tablet-dashboard grid min-w-0 items-stretch gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
           >
-            <section className="pixel-panel relative flex min-h-[360px] min-w-0 flex-col overflow-visible p-3 xl:min-h-[390px] xl:p-4">
+            <section className="pixel-panel relative flex min-h-[335px] min-w-0 flex-col overflow-visible p-3 xl:min-h-[365px] xl:p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-black">Assignment Board</h2>
