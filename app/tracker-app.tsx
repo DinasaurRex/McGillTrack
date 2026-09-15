@@ -10121,7 +10121,7 @@ function TodayClassList({
   }
 
   return (
-    <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(230px,100%),1fr))] gap-3">
+    <div className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(280px,100%),320px))] justify-start gap-3">
       {blocks.map((block) => {
         const course = courseById.get(block.courseId);
         return (
