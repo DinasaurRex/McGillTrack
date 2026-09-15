@@ -1071,6 +1071,8 @@ const scheduleEndHour = 18;
 const scheduleHourHeight = 56;
 const scheduleStartMinutes = scheduleStartHour * 60;
 const scheduleEndMinutes = scheduleEndHour * 60;
+const scheduleDayStartMinutes = 0;
+const scheduleDayEndMinutes = 24 * 60;
 
 const timeToMinutes = (time: string) => {
   const [hours = 0, minutes = 0] = time.split(':').map(Number);
@@ -4973,7 +4975,7 @@ export default function Home() {
     const startEndMinutes = clampNumber(
       timeToMinutes(block.end),
       startMinutes + 5,
-      scheduleViewEndMinutes,
+      scheduleDayEndMinutes,
     );
 
     scheduleResizeRef.current = {
@@ -5011,7 +5013,7 @@ export default function Home() {
       const nextEnd = clampNumber(
         snapToFiveMinutes(resize.startEndMinutes + minuteDelta),
         resize.startMinutes + 5,
-        scheduleViewEndMinutes,
+        scheduleDayEndMinutes,
       );
 
       updateCalendarBlockTime(resize.target, resize.id, {
@@ -5144,7 +5146,11 @@ export default function Home() {
     const selectedDays = scheduleDraftDays.length
       ? scheduleDraftDays
       : [scheduleDraft.day];
-    const { start, end } = calendarBlockMinutes(scheduleDraft);
+    const { start, end } = calendarBlockMinutes(
+      scheduleDraft,
+      scheduleDayEndMinutes,
+      scheduleDayStartMinutes,
+    );
     const normalizedScheduleDraft = {
       ...scheduleDraft,
       start: minutesToTime(start),
@@ -5172,7 +5178,11 @@ export default function Home() {
     const selectedDays = officeHourDraftDays.length
       ? officeHourDraftDays
       : [officeHourDraft.day];
-    const { start, end } = calendarBlockMinutes(officeHourDraft);
+    const { start, end } = calendarBlockMinutes(
+      officeHourDraft,
+      scheduleDayEndMinutes,
+      scheduleDayStartMinutes,
+    );
     const normalizedOfficeHourDraft = {
       ...officeHourDraft,
       start: minutesToTime(start),
