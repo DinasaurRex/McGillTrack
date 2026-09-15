@@ -141,6 +141,15 @@ type HourEntry = {
   notes: string;
 };
 
+type FocusSession = {
+  id: string;
+  date: string;
+  seconds: number;
+  courseId: string;
+  assignmentId: string;
+  mode: FocusMode;
+};
+
 type WebsiteEntry = {
   id: string;
   label: string;
@@ -271,6 +280,7 @@ type TrackerData = {
   officeHours: OfficeHourBlock[];
   notes: NoteEntry[];
   hours: HourEntry[];
+  focusSessions: FocusSession[];
   websites: WebsiteEntry[];
   shopping: ShoppingItem[];
   homework: HomeworkItem[];
@@ -824,6 +834,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       notes: '',
     },
   ],
+  focusSessions: [],
   websites: [
     {
       id: 'website-1',
@@ -1083,6 +1094,15 @@ const formatFocusSeconds = (seconds: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(
     remainingSeconds,
   ).padStart(2, '0')}`;
+};
+
+const formatFocusStatSeconds = (seconds: number) => {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+
+  const hours = minutes / 60;
+  return `${oneDecimal(hours)}h`;
 };
 
 const readComfortImageFile = (file: File) =>
@@ -2609,6 +2629,7 @@ const parseAnnabelleExcelWorkbook = (
       officeHours: [],
       notes: [],
       hours,
+      focusSessions: [],
       websites: [],
       shopping: [],
       homework: [],
@@ -2673,6 +2694,27 @@ const normalizeNotes = (notes = defaultData.notes): NoteEntry[] =>
     width: note.width ?? undefined,
     height: note.height ?? undefined,
   }));
+
+const normalizeFocusSessions = (
+  focusSessions = defaultData.focusSessions,
+): FocusSession[] =>
+  focusSessions
+    .filter(
+      (session) =>
+        session &&
+        typeof session.id === 'string' &&
+        typeof session.date === 'string',
+    )
+    .map((session) => ({
+      ...session,
+      seconds: Math.max(0, Math.floor(Number(session.seconds) || 0)),
+      courseId: session.courseId ?? '',
+      assignmentId: session.assignmentId ?? '',
+      mode: focusModeOptions.some((option) => option.value === session.mode)
+        ? session.mode
+        : 'focus',
+    }))
+    .filter((session) => session.seconds > 0);
 
 const normalizeReminderRule = (
   incoming: Partial<ReminderRule> | undefined,
@@ -2777,6 +2819,7 @@ const normalizeData = (incoming: Partial<TrackerData>): TrackerData => {
     officeHours: incoming.officeHours ?? defaultData.officeHours,
     notes: normalizeNotes(incoming.notes),
     hours: incoming.hours ?? defaultData.hours,
+    focusSessions: normalizeFocusSessions(incoming.focusSessions),
     websites: incoming.websites ?? defaultData.websites,
     shopping: incoming.shopping ?? defaultData.shopping,
     homework: incoming.homework ?? defaultData.homework,
@@ -3139,6 +3182,7 @@ export default function Home() {
   const [focusRunning, setFocusRunning] = useState(false);
   const [focusCourseId, setFocusCourseId] = useState(defaultData.courses[0].id);
   const [focusAssignmentId, setFocusAssignmentId] = useState('');
+  const [focusLoggedSeconds, setFocusLoggedSeconds] = useState(0);
   const [comfortImages, setComfortImages] = useState<ComfortImage[]>([]);
   const [comfortMessage, setComfortMessage] = useState('');
   const [installPrompt, setInstallPrompt] =
@@ -3208,6 +3252,47 @@ export default function Home() {
   );
   const [todoDraft, setTodoDraft] = useState<TodoItem>(blankTodoItem());
 
+  const recordFocusProgress = useCallback(() => {
+    const activeMode =
+      focusModeOptions.find((option) => option.value === focusMode) ??
+      focusModeOptions[0];
+    const totalSeconds = activeMode.minutes * 60;
+    const elapsedSeconds = totalSeconds - focusSecondsLeft;
+    const secondsToLog = elapsedSeconds - focusLoggedSeconds;
+
+    if (secondsToLog < 1) return;
+    setFocusLoggedSeconds(elapsedSeconds);
+
+    if (focusMode !== 'focus') return;
+
+    const courseId = dataRef.current.courses.some(
+      (course) => course.id === focusCourseId,
+    )
+      ? focusCourseId
+      : (dataRef.current.courses[0]?.id ?? '');
+
+    setData((current) => ({
+      ...current,
+      focusSessions: [
+        {
+          id: makeId(),
+          date: todayIso(),
+          seconds: secondsToLog,
+          courseId,
+          assignmentId: focusAssignmentId,
+          mode: focusMode,
+        },
+        ...(current.focusSessions ?? []),
+      ],
+    }));
+  }, [
+    focusAssignmentId,
+    focusCourseId,
+    focusLoggedSeconds,
+    focusMode,
+    focusSecondsLeft,
+  ]);
+
   useEffect(() => {
     if (activeTab !== 'notes') return;
 
@@ -3239,7 +3324,38 @@ export default function Home() {
     const interval = window.setInterval(() => {
       setFocusSecondsLeft((current) => {
         if (current <= 1) {
+          const activeMode =
+            focusModeOptions.find((option) => option.value === focusMode) ??
+            focusModeOptions[0];
+          const totalSeconds = activeMode.minutes * 60;
+          const secondsToLog = totalSeconds - focusLoggedSeconds;
+
           setFocusRunning(false);
+          setFocusLoggedSeconds(totalSeconds);
+
+          if (focusMode === 'focus' && secondsToLog > 0) {
+            const courseId = dataRef.current.courses.some(
+              (course) => course.id === focusCourseId,
+            )
+              ? focusCourseId
+              : (dataRef.current.courses[0]?.id ?? '');
+
+            setData((currentData) => ({
+              ...currentData,
+              focusSessions: [
+                {
+                  id: makeId(),
+                  date: todayIso(),
+                  seconds: secondsToLog,
+                  courseId,
+                  assignmentId: focusAssignmentId,
+                  mode: focusMode,
+                },
+                ...(currentData.focusSessions ?? []),
+              ],
+            }));
+          }
+
           return 0;
         }
 
@@ -3248,7 +3364,13 @@ export default function Home() {
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [focusRunning]);
+  }, [
+    focusAssignmentId,
+    focusCourseId,
+    focusLoggedSeconds,
+    focusMode,
+    focusRunning,
+  ]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -4004,6 +4126,20 @@ export default function Home() {
   const focusProgress =
     focusTotalSeconds > 0 ? focusSecondsLeft / focusTotalSeconds : 0;
   const focusElapsedSeconds = focusTotalSeconds - focusSecondsLeft;
+  const loggedTodayFocusSeconds = useMemo(
+    () =>
+      data.focusSessions
+        .filter((session) => session.mode === 'focus' && session.date === todayIso())
+        .reduce((sum, session) => sum + session.seconds, 0),
+    [data.focusSessions],
+  );
+  const liveFocusSeconds =
+    focusMode === 'focus'
+      ? Math.max(0, focusElapsedSeconds - focusLoggedSeconds)
+      : 0;
+  const todayFocusDisplay = formatFocusStatSeconds(
+    loggedTodayFocusSeconds + liveFocusSeconds,
+  );
   const focusRadius = 102;
   const focusCircumference = 2 * Math.PI * focusRadius;
   const focusDashOffset = focusCircumference * (1 - focusProgress);
@@ -4410,14 +4546,28 @@ export default function Home() {
       focusModeOptions.find((option) => option.value === nextMode) ??
       focusModeOptions[0];
 
+    recordFocusProgress();
+    setFocusLoggedSeconds(0);
     setFocusMode(nextMode);
     setFocusRunning(false);
     setFocusSecondsLeft(nextOption.minutes * 60);
   };
 
   const resetFocusTimer = () => {
+    recordFocusProgress();
+    setFocusLoggedSeconds(0);
     setFocusRunning(false);
     setFocusSecondsLeft(focusTotalSeconds);
+  };
+
+  const toggleFocusTimer = () => {
+    if (focusRunning) {
+      recordFocusProgress();
+      setFocusRunning(false);
+      return;
+    }
+
+    if (focusSecondsLeft > 0) setFocusRunning(true);
   };
 
   const promptInstallApp = async () => {
@@ -5430,8 +5580,8 @@ export default function Home() {
             icon={<GraduationCap className="size-5" />}
           />
           <MiniStat
-            label="Hours"
-            value={oneDecimal(totalHours)}
+            label="Focus Time"
+            value={todayFocusDisplay}
             icon={<Clock3 className="size-5" />}
           />
           <MiniStat
@@ -6500,6 +6650,7 @@ export default function Home() {
                       courses={data.courses}
                       value={effectiveFocusCourseId}
                       onChange={(value) => {
+                        recordFocusProgress();
                         setFocusCourseId(value);
                         setFocusAssignmentId('');
                       }}
@@ -6509,9 +6660,10 @@ export default function Home() {
                     <NativeSelect
                       className="w-full min-w-0"
                       value={focusAssignmentId}
-                      onChange={(event) =>
-                        setFocusAssignmentId(event.target.value)
-                      }
+                      onChange={(event) => {
+                        recordFocusProgress();
+                        setFocusAssignmentId(event.target.value);
+                      }}
                     >
                       <NativeSelectOption value="">
                         General focus
@@ -6602,11 +6754,7 @@ export default function Home() {
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     className="min-h-11"
-                    onClick={() =>
-                      setFocusRunning((current) =>
-                        focusSecondsLeft > 0 ? !current : current,
-                      )
-                    }
+                    onClick={toggleFocusTimer}
                     disabled={focusSecondsLeft === 0}
                   >
                     {focusRunning ? (
