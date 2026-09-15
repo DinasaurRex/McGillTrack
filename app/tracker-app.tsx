@@ -1099,6 +1099,7 @@ const formatFocusSeconds = (seconds: number) => {
 const formatFocusStatSeconds = (seconds: number) => {
   const safeSeconds = Math.max(0, Math.floor(seconds));
   const minutes = Math.floor(safeSeconds / 60);
+  if (minutes === 0) return '0';
   if (minutes < 60) return `${minutes}m`;
 
   const hours = minutes / 60;
@@ -10037,7 +10038,6 @@ function AssignmentPreviewList({
         const left = daysLeft(assignment.dueDate);
         const dueTime = formatDueTime(assignment.dueTime);
         const done = isAssignmentDone(assignment);
-        const overdue = !done && left !== null && left < 0;
         const countdownLabel = done
           ? 'Yay!'
           : left === null
@@ -10045,12 +10045,18 @@ function AssignmentPreviewList({
             : left < 0
               ? `${Math.abs(left)} ${dayWord(left)} late`
               : `${left} days`;
+        const countdownClass = done
+          ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
+          : left !== null && left <= 1
+            ? 'border-red-300 bg-red-50 text-red-700'
+            : left !== null && left <= 5
+              ? 'border-orange-300 bg-orange-50 text-orange-700'
+              : 'border-blue-200 bg-white';
+
         return (
           <article
             key={assignment.id}
-            className={`grid min-w-0 gap-2 overflow-hidden border-2 border-blue-200 p-3 ${
-              done ? 'bg-emerald-50' : overdue ? 'bg-orange-50' : 'bg-white'
-            }`}
+            className="grid min-w-0 gap-2 overflow-hidden border-2 border-blue-200 bg-white p-3"
           >
             <div className="flex items-start gap-3">
               <span
@@ -10078,15 +10084,7 @@ function AssignmentPreviewList({
                   termEndDate,
                 )}
               </span>
-              <span
-                className={`border px-2 py-0.5 ${
-                  done
-                    ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
-                    : overdue
-                    ? 'border-orange-300 bg-orange-100 text-orange-800'
-                    : 'border-blue-200 bg-white'
-                }`}
-              >
+              <span className={`border px-2 py-0.5 ${countdownClass}`}>
                 {countdownLabel}
               </span>
             </div>
