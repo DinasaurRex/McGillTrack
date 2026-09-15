@@ -198,6 +198,12 @@ type MorningBriefSettings = {
   assignmentLimit: number;
 };
 
+type RecurringAssignmentDraft = {
+  enabled: boolean;
+  count: number;
+  startNumber: number;
+};
+
 type NotificationSettings = {
   enabled: boolean;
   quietHoursEnabled: boolean;
@@ -898,6 +904,12 @@ const blankTodoItem = (): TodoItem => ({
   done: false,
 });
 
+const createDefaultRecurringAssignmentDraft = (): RecurringAssignmentDraft => ({
+  enabled: false,
+  count: 4,
+  startNumber: 1,
+});
+
 const numberValue = (value: string) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -969,6 +981,25 @@ const assignmentWeekLabel = (
   if (daysFromStart < 0) return 'Before Classes';
 
   return `Week ${Math.floor(daysFromStart / 7) + 1}`;
+};
+
+const splitTrailingTitleNumber = (title: string) => {
+  const cleanTitle = title.trim();
+  const match = cleanTitle.match(/^(.*?)(?:\s+(\d+))$/);
+
+  return {
+    baseTitle: match?.[1]?.trim() || cleanTitle,
+    titleNumber: match?.[2] ? Number(match[2]) : null,
+  };
+};
+
+const recurringAssignmentTitle = (
+  title: string,
+  startNumber: number,
+  index: number,
+) => {
+  const { baseTitle } = splitTrailingTitleNumber(title);
+  return `${baseTitle} ${startNumber + index}`.trim();
 };
 
 const hoursBetween = (start: string, end: string) => {
@@ -3068,6 +3099,8 @@ export default function Home() {
   const [assignmentDraft, setAssignmentDraft] = useState<Assignment>(
     blankAssignment(defaultData.courses[0].id),
   );
+  const [recurringAssignmentDraft, setRecurringAssignmentDraft] =
+    useState<RecurringAssignmentDraft>(createDefaultRecurringAssignmentDraft());
   const [scheduleDraft, setScheduleDraft] = useState<ScheduleBlock>(
     blankSchedule(defaultData.courses[0].id),
   );
@@ -4687,22 +4720,48 @@ export default function Home() {
 
   const addAssignment = () => {
     if (!assignmentDraft.title.trim()) return;
-    setData((current) => ({
-      ...current,
-      assignments: [
-        {
+    setData((current) => {
+      const repeatCount = recurringAssignmentDraft.enabled
+        ? clampNumber(Math.round(recurringAssignmentDraft.count), 1, 30)
+        : 1;
+      const inferredStartNumber =
+        splitTrailingTitleNumber(assignmentDraft.title).titleNumber;
+      const startNumber = Math.max(
+        1,
+        Math.round(
+          inferredStartNumber ?? recurringAssignmentDraft.startNumber,
+        ),
+      );
+      const assignments = Array.from({ length: repeatCount }, (_item, index) => {
+        const dueDate = addDays(index * 7, assignmentDraft.dueDate);
+
+        return {
           ...assignmentDraft,
           id: makeId(),
+          title:
+            recurringAssignmentDraft.enabled && repeatCount > 1
+              ? recurringAssignmentTitle(
+                  assignmentDraft.title,
+                  startNumber,
+                  index,
+                )
+              : assignmentDraft.title,
+          dueDate,
           week: assignmentWeekLabel(
-            assignmentDraft.dueDate,
+            dueDate,
             current.termStartDate,
             current.termEndDate,
           ),
-        },
-        ...current.assignments,
-      ],
-    }));
+        };
+      });
+
+      return {
+        ...current,
+        assignments: [...assignments, ...current.assignments],
+      };
+    });
     setAssignmentDraft(blankAssignment(assignmentDraft.courseId));
+    setRecurringAssignmentDraft(createDefaultRecurringAssignmentDraft());
   };
 
   const createCustomCourse = useCallback((name: string) => {
@@ -7103,12 +7162,21 @@ export default function Home() {
               <Field label="Assignment">
                 <TextInput
                   value={assignmentDraft.title}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const nextTitle = event.target.value;
+                    const titleNumber =
+                      splitTrailingTitleNumber(nextTitle).titleNumber;
                     setAssignmentDraft({
                       ...assignmentDraft,
-                      title: event.target.value,
-                    })
-                  }
+                      title: nextTitle,
+                    });
+                    if (titleNumber !== null) {
+                      setRecurringAssignmentDraft((current) => ({
+                        ...current,
+                        startNumber: titleNumber,
+                      }));
+                    }
+                  }}
                   placeholder="Problem set, essay, quiz"
                 />
               </Field>
@@ -7169,8 +7237,80 @@ export default function Home() {
               <div className="flex items-end">
                 <Button onClick={addAssignment} className="h-10 w-full xl:h-9">
                   <Plus data-icon="inline-start" />
-                  Add
+                  {recurringAssignmentDraft.enabled ? 'Add series' : 'Add'}
                 </Button>
+              </div>
+              <div className="grid min-w-0 gap-3 border-2 border-blue-100 bg-blue-50/60 p-3 md:col-span-2 lg:col-span-3 xl:col-span-7">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-sm font-black text-blue-950">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-blue-500"
+                      checked={recurringAssignmentDraft.enabled}
+                      onChange={(event) =>
+                        setRecurringAssignmentDraft((current) => ({
+                          ...current,
+                          enabled: event.target.checked,
+                        }))
+                      }
+                    />
+                    Repeat weekly
+                  </label>
+                  <p className="text-xs font-bold text-blue-950/60">
+                    Creates normal editable assignments, one per week.
+                  </p>
+                </div>
+                {recurringAssignmentDraft.enabled ? (
+                  <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(120px,0.35fr)_minmax(120px,0.35fr)]">
+                    <div className="border-2 border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-blue-950/70">
+                      {recurringAssignmentTitle(
+                        assignmentDraft.title || 'Assignment',
+                        splitTrailingTitleNumber(assignmentDraft.title)
+                          .titleNumber ??
+                        Math.max(
+                          1,
+                          Math.round(recurringAssignmentDraft.startNumber),
+                        ),
+                        0,
+                      )}{' '}
+                      on {formatMonthDay(assignmentDraft.dueDate)} then weekly
+                    </div>
+                    <Field label="How Many">
+                      <TextInput
+                        type="number"
+                        min="1"
+                        max="30"
+                        value={recurringAssignmentDraft.count}
+                        onChange={(event) =>
+                          setRecurringAssignmentDraft((current) => ({
+                            ...current,
+                            count: clampNumber(
+                              Math.round(numberValue(event.target.value)),
+                              1,
+                              30,
+                            ),
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Start Number">
+                      <TextInput
+                        type="number"
+                        min="1"
+                        value={recurringAssignmentDraft.startNumber}
+                        onChange={(event) =>
+                          setRecurringAssignmentDraft((current) => ({
+                            ...current,
+                            startNumber: Math.max(
+                              1,
+                              Math.round(numberValue(event.target.value)),
+                            ),
+                          }))
+                        }
+                      />
+                    </Field>
+                  </div>
+                ) : null}
               </div>
             </section>
             <section className="pixel-panel min-w-0 overflow-hidden p-3 sm:p-4">
