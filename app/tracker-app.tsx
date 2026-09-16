@@ -10022,6 +10022,29 @@ function OfficeHoursMobileList({
   );
 }
 
+function AssignmentFreedomScene() {
+  return (
+    <div className="relative mx-1 h-[205px] overflow-visible px-4 py-5 sm:mx-2 sm:h-[230px] sm:px-5 sm:py-6">
+      <div className="relative z-10 w-fit max-w-[360px] border-2 border-blue-200 bg-blue-50 px-5 py-4">
+        <p className="text-lg font-black text-blue-950">
+          Yayyy, freedom!!!
+        </p>
+        <p className="mt-2 text-base font-semibold text-blue-950/65">
+          Take a nap, eat, anything.
+        </p>
+      </div>
+
+      <Image
+        src="/assets/pixel-goose-parade.png"
+        alt=""
+        width={1635}
+        height={754}
+        className="pointer-events-none absolute -bottom-5 left-1/2 w-[220px] max-w-[46%] -translate-x-1/2 [image-rendering:pixelated] sm:-bottom-4 sm:w-[270px]"
+      />
+    </div>
+  );
+}
+
 function AssignmentPreviewList({
   assignments,
   courseById,
@@ -10034,11 +10057,7 @@ function AssignmentPreviewList({
   termEndDate: string;
 }) {
   if (assignments.length === 0) {
-    return (
-      <div className="border-2 border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-950/70">
-        No upcoming assignments.
-      </div>
-    );
+    return <AssignmentFreedomScene />;
   }
 
   return (
