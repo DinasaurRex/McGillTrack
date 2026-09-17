@@ -5948,10 +5948,7 @@ export default function Home() {
                               );
                               const tightAttachedBlock =
                                 blockAssignments.length > 0 &&
-                                layout.height < 92;
-                              const ultraTightAttachedBlock =
-                                blockAssignments.length > 0 &&
-                                layout.height < 70;
+                                layout.height < 76;
                               const visibleBlockAssignments =
                                 blockAssignments.slice(
                                   0,
@@ -5959,6 +5956,15 @@ export default function Home() {
                                 );
                               const hasAttachedAssignments =
                                 visibleBlockAssignments.length > 0;
+                              const blockDurationMinutes =
+                                timeToMinutes(block.end) -
+                                timeToMinutes(block.start);
+                              const showAttachedBlockTime =
+                                hasAttachedAssignments &&
+                                blockDurationMinutes >= 75;
+                              const showAttachedBlockDetails =
+                                hasAttachedAssignments &&
+                                blockDurationMinutes >= 100;
                               const assignmentBadgeBackground =
                                 softenCourseColor(course?.color);
                               const blockTypeLabel = shouldShowBlockType(
@@ -5982,20 +5988,19 @@ export default function Home() {
                                   <div className="flex h-full min-h-0 items-center justify-center">
                                     <div
                                       className={`grid min-w-0 max-w-full ${
-                                        hasAttachedAssignments ? 'gap-1' : ''
+                                        hasAttachedAssignments ? 'gap-0.5' : ''
                                       }`}
                                     >
                                       <div className="min-w-0">
                                         <p
                                           className={`truncate font-black leading-tight ${
-                                            compactBlock || tightAttachedBlock
-                                              ? 'text-xs'
-                                              : 'text-sm'
+                                            compactBlock ? 'text-xs' : 'text-sm'
                                           }`}
                                         >
                                           {course?.name ?? 'Course'}
                                         </p>
-                                        {!ultraTightAttachedBlock ? (
+                                        {(!hasAttachedAssignments ||
+                                          showAttachedBlockTime) ? (
                                           <p
                                             className={`text-xs leading-tight text-blue-950/70 ${
                                               compactBlock || tightAttachedBlock
@@ -6010,7 +6015,8 @@ export default function Home() {
                                           </p>
                                         ) : null}
                                         {!compactBlock &&
-                                        !tightAttachedBlock ? (
+                                        (!hasAttachedAssignments ||
+                                          showAttachedBlockDetails) ? (
                                           <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
                                             {block.location ||
                                               course?.room ||
@@ -6018,7 +6024,8 @@ export default function Home() {
                                           </p>
                                         ) : null}
                                         {!compactBlock &&
-                                        !tightAttachedBlock &&
+                                        (!hasAttachedAssignments ||
+                                          showAttachedBlockDetails) &&
                                         blockTypeLabel ? (
                                           <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
                                             {blockTypeLabel}
