@@ -253,19 +253,19 @@ const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'overview', label: 'Overview', href: '/' },
   { value: 'weekly', label: 'Weekly', href: '/weekly' },
   { value: 'assignments', label: 'Assignments', href: '/assignments' },
-  { value: 'courses', label: 'Courses', href: '/courses' },
+  { value: 'notes', label: 'Notes', href: '/notes' },
   { value: 'grades', label: 'Grades', href: '/grades' },
+  { value: 'lists', label: 'Lists', href: '/lists' },
+  { value: 'courses', label: 'Courses', href: '/courses' },
   { value: 'schedule', label: 'Schedule', href: '/schedule' },
   { value: 'office-hours', label: 'Office Hours', href: '/office-hours' },
-  { value: 'lists', label: 'Lists', href: '/lists' },
-  { value: 'notes', label: 'Notes', href: '/notes' },
-  { value: 'hours', label: 'Hours', href: '/hours' },
-  { value: 'import', label: 'Import', href: '/import' },
-  { value: 'friends', label: 'Friends', href: '/friends' },
   { value: 'focus', label: 'Focus', href: '/focus' },
+  { value: 'hours', label: 'Hours', href: '/hours' },
+  { value: 'friends', label: 'Friends', href: '/friends' },
   { value: 'comfort', label: 'Comfort', href: '/comfort' },
   { value: 'notifications', label: 'Notifications', href: '/notifications' },
   { value: 'app', label: 'App', href: '/app' },
+  { value: 'import', label: 'Import', href: '/import' },
 ];
 
 const tabFromPathname = (pathname: string): TrackerTab =>
@@ -4196,6 +4196,25 @@ export default function Home() {
     () => new Set(academicCourses.map((course) => course.id)),
     [academicCourses],
   );
+  const gradebookAssignments = useMemo(
+    () =>
+      [...data.assignments].sort((first, second) => {
+        const firstWeighted = first.weight > 0;
+        const secondWeighted = second.weight > 0;
+        if (firstWeighted !== secondWeighted) return firstWeighted ? -1 : 1;
+
+        const firstDue = new Date(
+          `${first.dueDate || '9999-12-31'}T${first.dueTime || '23:59'}`,
+        ).getTime();
+        const secondDue = new Date(
+          `${second.dueDate || '9999-12-31'}T${second.dueTime || '23:59'}`,
+        ).getTime();
+
+        if (firstDue !== secondDue) return firstDue - secondDue;
+        return first.title.localeCompare(second.title);
+      }),
+    [data.assignments],
+  );
   const gradedAssignments = data.assignments.filter(
     (assignment) =>
       academicCourseIds.has(assignment.courseId) &&
@@ -7979,7 +7998,7 @@ export default function Home() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.assignments.map((assignment) => {
+                  {gradebookAssignments.map((assignment) => {
                     const weighted =
                       assignment.graded && assignment.maxScore > 0
                         ? (assignment.score / assignment.maxScore) *
