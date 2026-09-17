@@ -5844,10 +5844,10 @@ export default function Home() {
                                           course?.color,
                                         ),
                                       }}
-                                      title={`${assignment.type}: ${assignment.title}`}
+                                      title={`${assignment.title} · ${assignment.type}`}
                                     >
                                       <p className="truncate">
-                                        {assignment.type}: {assignment.title}
+                                        {assignment.title}
                                       </p>
                                     </div>
                                   );
@@ -5946,10 +5946,16 @@ export default function Home() {
                                     scheduleViewStartMinutes,
                                   ),
                               );
+                              const tightAttachedBlock =
+                                blockAssignments.length > 0 &&
+                                layout.height < 92;
+                              const ultraTightAttachedBlock =
+                                blockAssignments.length > 0 &&
+                                layout.height < 70;
                               const visibleBlockAssignments =
                                 blockAssignments.slice(
                                   0,
-                                  compactBlock ? 1 : 2,
+                                  layout.height < 116 ? 1 : 2,
                                 );
                               const hasAttachedAssignments =
                                 visibleBlockAssignments.length > 0;
@@ -5982,29 +5988,38 @@ export default function Home() {
                                       <div className="min-w-0">
                                         <p
                                           className={`truncate font-black leading-tight ${
-                                            compactBlock ? 'text-xs' : 'text-sm'
+                                            compactBlock || tightAttachedBlock
+                                              ? 'text-xs'
+                                              : 'text-sm'
                                           }`}
                                         >
                                           {course?.name ?? 'Course'}
                                         </p>
-                                        <p
-                                          className={`text-xs leading-tight text-blue-950/70 ${
-                                            compactBlock ? 'truncate' : ''
-                                          }`}
-                                        >
-                                          {formatBlockTimeRange(block)}
-                                          {compactBlock
-                                            ? ` · ${block.location || course?.room || 'Location'}`
-                                            : ''}
-                                        </p>
-                                        {!compactBlock ? (
+                                        {!ultraTightAttachedBlock ? (
+                                          <p
+                                            className={`text-xs leading-tight text-blue-950/70 ${
+                                              compactBlock || tightAttachedBlock
+                                                ? 'truncate'
+                                                : ''
+                                            }`}
+                                          >
+                                            {formatBlockTimeRange(block)}
+                                            {compactBlock
+                                              ? ` · ${block.location || course?.room || 'Location'}`
+                                              : ''}
+                                          </p>
+                                        ) : null}
+                                        {!compactBlock &&
+                                        !tightAttachedBlock ? (
                                           <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
                                             {block.location ||
                                               course?.room ||
                                               'Location'}
                                           </p>
                                         ) : null}
-                                        {!compactBlock && blockTypeLabel ? (
+                                        {!compactBlock &&
+                                        !tightAttachedBlock &&
+                                        blockTypeLabel ? (
                                           <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
                                             {blockTypeLabel}
                                           </p>
@@ -6012,34 +6027,34 @@ export default function Home() {
                                       </div>
                                       {hasAttachedAssignments ? (
                                         <div className="pointer-events-none grid gap-0.5">
-                                      {visibleBlockAssignments.map(
-                                        (assignment) => (
-                                          <p
-                                            key={assignment.id}
-                                            className="truncate border border-blue-300 px-1 py-0.5 text-xs font-black leading-tight text-blue-950"
-                                            style={{
-                                              background:
-                                                assignmentBadgeBackground,
-                                            }}
-                                            title={`${assignment.type}: ${assignment.title}`}
-                                          >
-                                            {assignment.type}:{' '}
-                                            {assignment.title}
-                                          </p>
-                                        ),
-                                      )}
-                                      {!compactBlock &&
-                                      blockAssignments.length > 2 ? (
-                                        <p
-                                          className="truncate border border-blue-200 px-1 py-0.5 text-xs font-black leading-tight text-blue-950/65"
-                                          style={{
-                                            background:
-                                              assignmentBadgeBackground,
-                                          }}
-                                        >
-                                          +{blockAssignments.length - 2} more
-                                        </p>
-                                      ) : null}
+                                          {visibleBlockAssignments.map(
+                                            (assignment) => (
+                                              <p
+                                                key={assignment.id}
+                                                className="truncate border border-blue-300 px-1 py-0.5 text-xs font-black leading-tight text-blue-950"
+                                                style={{
+                                                  background:
+                                                    assignmentBadgeBackground,
+                                                }}
+                                                title={`${assignment.title} · ${assignment.type}`}
+                                              >
+                                                {assignment.title}
+                                              </p>
+                                            ),
+                                          )}
+                                          {layout.height >= 116 &&
+                                          blockAssignments.length > 2 ? (
+                                            <p
+                                              className="truncate border border-blue-200 px-1 py-0.5 text-xs font-black leading-tight text-blue-950/65"
+                                              style={{
+                                                background:
+                                                  assignmentBadgeBackground,
+                                              }}
+                                            >
+                                              +{blockAssignments.length - 2}{' '}
+                                              more
+                                            </p>
+                                          ) : null}
                                         </div>
                                       ) : null}
                                     </div>
@@ -6171,10 +6186,10 @@ export default function Home() {
                                       course?.color,
                                     ),
                                   }}
-                                  title={`${assignment.type}: ${assignment.title} · Due ${formatDueTime(assignment.dueTime)}`}
+                                  title={`${assignment.title} · ${assignment.type} · Due ${formatDueTime(assignment.dueTime)}`}
                                 >
                                   <p className="truncate">
-                                    {assignment.type}: {assignment.title}
+                                    {assignment.title}
                                   </p>
                                   <p className="truncate text-[11px] font-semibold text-blue-950/65">
                                     Due {formatDueTime(assignment.dueTime)}
@@ -6227,10 +6242,10 @@ export default function Home() {
                                       course?.color,
                                     ),
                                   }}
-                                  title={`${assignment.type}: ${assignment.title} · ${dueLabel}`}
+                                  title={`${assignment.title} · ${assignment.type} · ${dueLabel}`}
                                 >
                                   <p className="truncate">
-                                    {assignment.type}: {assignment.title}
+                                    {assignment.title}
                                   </p>
                                   <p className="truncate text-[11px] font-semibold text-blue-950/65">
                                     {dueLabel}
