@@ -4974,6 +4974,19 @@ export default function Home() {
     );
   };
 
+  const updateScheduleBlock = <K extends keyof ScheduleBlock>(
+    id: string,
+    key: K,
+    value: ScheduleBlock[K],
+  ) => {
+    setData((current) => ({
+      ...current,
+      schedule: current.schedule.map((block) =>
+        block.id === id ? { ...block, [key]: value } : block,
+      ),
+    }));
+  };
+
   const startScheduleBlockResize = (
     event: React.PointerEvent<HTMLButtonElement>,
     edge: 'start' | 'end',
@@ -7694,6 +7707,7 @@ export default function Home() {
               <div className="hidden md:block">
                 <AssignmentTable
                   assignments={data.assignments}
+                  courses={data.courses}
                   courseById={courseById}
                   websites={data.websites}
                   termStartDate={data.termStartDate}
@@ -8325,13 +8339,29 @@ export default function Home() {
                               />
                               <div className="flex h-full min-h-0 items-center justify-center">
                                 <div className="min-w-0 max-w-full">
-                                  <p
-                                    className={`truncate font-black leading-tight ${
+                                  <select
+                                    aria-label={`Change course for ${course?.name ?? 'class'}`}
+                                    value={block.courseId}
+                                    onChange={(event) =>
+                                      updateScheduleBlock(
+                                        block.id,
+                                        'courseId',
+                                        event.target.value,
+                                      )
+                                    }
+                                    className={`h-auto w-full cursor-pointer appearance-none truncate border-0 bg-transparent p-0 text-center font-black leading-tight text-blue-950 outline-none hover:bg-transparent focus:bg-transparent [&::-ms-expand]:hidden ${
                                       compactBlock ? 'text-xs' : 'text-sm'
                                     }`}
                                   >
-                                    {course?.name ?? 'Course'}
-                                  </p>
+                                    {data.courses.map((courseOption) => (
+                                      <option
+                                        key={courseOption.id}
+                                        value={courseOption.id}
+                                      >
+                                        {courseOption.name}
+                                      </option>
+                                    ))}
+                                  </select>
                                   <p
                                     className={`text-xs leading-tight text-blue-950/70 ${
                                       compactBlock ? 'truncate' : ''
@@ -8343,11 +8373,19 @@ export default function Home() {
                                       : ''}
                                   </p>
                                   {!compactBlock ? (
-                                    <p className="truncate text-xs font-semibold leading-tight text-blue-950/70">
-                                      {block.location ||
-                                        course?.room ||
-                                        'Location'}
-                                    </p>
+                                    <input
+                                      aria-label={`Edit location for ${course?.name ?? 'class'}`}
+                                      value={block.location}
+                                      onChange={(event) =>
+                                        updateScheduleBlock(
+                                          block.id,
+                                          'location',
+                                          event.target.value,
+                                        )
+                                      }
+                                      className="w-full truncate bg-transparent p-0 text-center text-xs leading-tight font-semibold text-blue-950/70 outline-none placeholder:text-blue-950/45 hover:bg-white/20 focus:bg-white/30"
+                                      placeholder={course?.room || 'Location'}
+                                    />
                                   ) : null}
                                   {!compactBlock &&
                                   shouldShowBlockType(block.type) ? (
@@ -10220,6 +10258,7 @@ function TodayClassList({
 
 function AssignmentTable({
   assignments,
+  courses,
   courseById,
   websites,
   termStartDate,
@@ -10228,6 +10267,7 @@ function AssignmentTable({
   removeAssignment,
 }: {
   assignments: Assignment[];
+  courses: Course[];
   courseById: Map<string, Course>;
   websites: WebsiteEntry[];
   termStartDate: string;
@@ -10317,8 +10357,24 @@ function AssignmentTable({
           const leftLabel = assignmentCountdownLabel(assignment);
           return (
             <TableRow key={assignment.id} className={urgencyClass}>
-              <TableCell className="align-top py-2">
-                {courseById.get(assignment.courseId)?.name ?? 'Course'}
+              <TableCell className="min-w-60 align-top py-2">
+                <NativeSelect
+                  value={assignment.courseId}
+                  onChange={(event) =>
+                    updateAssignment(
+                      assignment.id,
+                      'courseId',
+                      event.target.value,
+                    )
+                  }
+                  className="w-full border-transparent bg-transparent px-1 shadow-none hover:border-blue-200 focus:border-blue-300 focus:bg-white/35"
+                >
+                  {courses.map((course) => (
+                    <NativeSelectOption key={course.id} value={course.id}>
+                      {course.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
               </TableCell>
               <TableCell className="min-w-56 align-top py-2">
                 <TextInput
@@ -10329,7 +10385,7 @@ function AssignmentTable({
                   className="w-full"
                 />
               </TableCell>
-              <TableCell className="min-w-60 align-top py-2">
+              <TableCell className="min-w-48 align-top py-2">
                 <div className="grid gap-2">
                   <NativeSelect
                     value=""
@@ -10342,7 +10398,7 @@ function AssignmentTable({
                         websiteId,
                       ]);
                     }}
-                    className="w-full"
+                    className="w-48"
                   >
                     <NativeSelectOption value="">
                       Attach saved link...
