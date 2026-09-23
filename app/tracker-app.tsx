@@ -268,6 +268,27 @@ const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
   { value: 'import', label: 'Import', href: '/import' },
 ];
 
+const creatorEmail = 'dina07.saab@gmail.com';
+const creatorLinkedInUrl = 'https://www.linkedin.com/in/dinasaab/';
+const creatorPortfolioUrl = 'https://littlerayofdina.com';
+const feedbackFormUrl = '';
+const feedbackEmailHref = `mailto:${creatorEmail}?subject=${encodeURIComponent(
+  'Trakkit feedback',
+)}&body=${encodeURIComponent(
+  [
+    'Suggestion or bug:',
+    '',
+    '',
+    'Device:',
+    '',
+    'Browser:',
+    '',
+    'Page where it happened:',
+    '',
+  ].join('\n'),
+)}`;
+const feedbackHref = feedbackFormUrl || feedbackEmailHref;
+
 const tabFromPathname = (pathname: string): TrackerTab =>
   trackerTabs.find((tab) => tab.href === pathname)?.value ?? 'overview';
 
@@ -5497,7 +5518,7 @@ export default function Home() {
 
   return (
     <main className="min-h-[calc(100vh+8rem)] overflow-x-hidden bg-[var(--background)] text-blue-950">
-      <div className="tablet-shell mx-auto flex w-full max-w-[1500px] min-w-0 flex-col gap-3 px-2 pt-3 pb-32 sm:px-5 sm:pt-4 sm:pb-40 xl:gap-5 xl:px-8">
+      <div className="tablet-shell mx-auto flex min-h-screen w-full max-w-[1500px] min-w-0 flex-col gap-3 px-2 pt-3 pb-3 sm:px-5 sm:pt-4 sm:pb-4 xl:gap-5 xl:px-8">
         <header className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-5 sm:p-4 xl:grid-cols-[1fr_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <div className="grid size-10 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[3px_3px_0_#dbeafe] sm:size-12 sm:shadow-[4px_4px_0_#dbeafe]">
@@ -9286,6 +9307,44 @@ export default function Home() {
             </section>
           </TabsContent>
         </Tabs>
+
+        <footer className="pixel-panel mt-40 grid min-w-0 gap-3 p-3 text-sm text-blue-950/70 sm:mt-56 sm:p-4 xl:mt-72 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+          <div className="min-w-0">
+            <p className="font-black text-blue-950">Trakkit by Dina Saab</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <a
+                href={`mailto:${creatorEmail}`}
+                className="border border-blue-200 bg-blue-50 px-2 py-1 font-bold hover:border-blue-300 hover:text-blue-950"
+              >
+                Email
+              </a>
+              <a
+                href={creatorLinkedInUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="border border-blue-200 bg-blue-50 px-2 py-1 font-bold hover:border-blue-300 hover:text-blue-950"
+              >
+                LinkedIn
+              </a>
+              <a
+                href={creatorPortfolioUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="border border-blue-200 bg-blue-50 px-2 py-1 font-bold hover:border-blue-300 hover:text-blue-950"
+              >
+                Portfolio
+              </a>
+            </div>
+          </div>
+          <a
+            href={feedbackHref}
+            target={feedbackFormUrl ? '_blank' : undefined}
+            rel={feedbackFormUrl ? 'noreferrer' : undefined}
+            className="inline-flex min-h-9 items-center justify-center border-2 border-blue-300 bg-amber-50 px-3 py-2 text-sm font-black text-blue-950 shadow-[3px_3px_0_#dbeafe] hover:bg-amber-100"
+          >
+            Suggest something or report a bug
+          </a>
+        </footer>
       </div>
     </main>
   );
