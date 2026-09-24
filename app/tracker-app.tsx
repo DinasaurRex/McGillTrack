@@ -271,7 +271,7 @@ const trackerTabs: { value: TrackerTab; label: string; href: string }[] = [
 const creatorEmail = 'dina07.saab@gmail.com';
 const creatorLinkedInUrl = 'https://www.linkedin.com/in/dinasaab/';
 const creatorPortfolioUrl = 'https://littlerayofdina.com';
-const feedbackFormUrl = '';
+const feedbackFormUrl = 'https://forms.gle/qerTRxwfAmS8Zrz9A';
 const feedbackEmailHref = `mailto:${creatorEmail}?subject=${encodeURIComponent(
   'Trakkit feedback',
 )}&body=${encodeURIComponent(
@@ -5518,7 +5518,7 @@ export default function Home() {
 
   return (
     <main className="min-h-[calc(100vh+8rem)] overflow-x-hidden bg-[var(--background)] text-blue-950">
-      <div className="tablet-shell mx-auto flex min-h-screen w-full max-w-[1500px] min-w-0 flex-col gap-3 px-2 pt-3 pb-3 sm:px-5 sm:pt-4 sm:pb-4 xl:gap-5 xl:px-8">
+      <div className="tablet-shell mx-auto flex min-h-screen w-full max-w-[1500px] min-w-0 flex-col gap-3 px-2 pt-3 pb-5 sm:px-5 sm:pt-4 sm:pb-6 xl:gap-5 xl:px-8">
         <header className="pixel-panel grid min-w-0 gap-3 p-3 sm:gap-5 sm:p-4 xl:grid-cols-[1fr_auto] xl:items-center">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <div className="grid size-10 shrink-0 place-items-center border-2 border-blue-300 bg-blue-100 shadow-[3px_3px_0_#dbeafe] sm:size-12 sm:shadow-[4px_4px_0_#dbeafe]">
@@ -9308,7 +9308,7 @@ export default function Home() {
           </TabsContent>
         </Tabs>
 
-        <footer className="pixel-panel mt-40 grid min-w-0 gap-3 p-3 text-sm text-blue-950/70 sm:mt-56 sm:p-4 xl:mt-72 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+        <footer className="pixel-panel mt-20 grid min-w-0 gap-3 p-3 text-sm text-blue-950/70 sm:mt-28 sm:p-4 xl:mt-36 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
           <div className="min-w-0">
             <p className="font-black text-blue-950">Trakkit by Dina Saab</p>
             <div className="mt-2 flex flex-wrap gap-2">
