@@ -1018,6 +1018,18 @@ const formatBriefDueTiming = (dueDate: string) => {
   return `in ${left} days`;
 };
 
+const assignmentTimeLabel = (
+  assignment: Pick<Assignment, 'dueDate' | 'dueTime' | 'type'>,
+) => {
+  const timeOrDate = assignment.dueTime
+    ? formatDueTime(assignment.dueTime)
+    : formatMonthDay(assignment.dueDate);
+
+  return examAssignmentTypes.includes(assignment.type)
+    ? `At ${timeOrDate}`
+    : `Due ${timeOrDate}`;
+};
+
 const isAssignmentDone = (
   assignment: Pick<Assignment, 'status' | 'submitted'>,
 ) => assignment.status === 'Done' || assignment.submitted;
@@ -6182,6 +6194,7 @@ export default function Home() {
                           : null}
                         {timedAssignments.map((assignment) => {
                           const course = courseById.get(assignment.courseId);
+                          const timeLabel = assignmentTimeLabel(assignment);
                           const layout = scheduleBlockLayout(
                             {
                               start: assignment.dueTime ?? '09:00',
@@ -6205,7 +6218,7 @@ export default function Home() {
                             >
                               <p className="truncate">{assignment.title}</p>
                               <p className="truncate font-semibold text-blue-950/70">
-                                Due {formatDueTime(assignment.dueTime)}
+                                {course?.name ?? 'Course'} · {timeLabel}
                               </p>
                             </div>
                           );
@@ -6237,6 +6250,7 @@ export default function Home() {
                               const course = courseById.get(
                                 assignment.courseId,
                               );
+                              const timeLabel = assignmentTimeLabel(assignment);
                               return (
                                 <div
                                   key={assignment.id}
@@ -6246,13 +6260,13 @@ export default function Home() {
                                       course?.color,
                                     ),
                                   }}
-                                  title={`${assignment.title} · ${assignment.type} · Due ${formatDueTime(assignment.dueTime)}`}
+                                  title={`${assignment.title} · ${course?.name ?? 'Course'} · ${assignment.type} · ${timeLabel}`}
                                 >
                                   <p className="truncate">
                                     {assignment.title}
                                   </p>
                                   <p className="truncate text-[11px] font-semibold text-blue-950/65">
-                                    Due {formatDueTime(assignment.dueTime)}
+                                    {course?.name ?? 'Course'} · {timeLabel}
                                   </p>
                                 </div>
                               );
@@ -6290,9 +6304,7 @@ export default function Home() {
                               const course = courseById.get(
                                 assignment.courseId,
                               );
-                              const dueLabel = assignment.dueTime
-                                ? `Due ${formatDueTime(assignment.dueTime)}`
-                                : formatMonthDay(assignment.dueDate);
+                              const timeLabel = assignmentTimeLabel(assignment);
                               return (
                                 <div
                                   key={assignment.id}
@@ -6302,13 +6314,13 @@ export default function Home() {
                                       course?.color,
                                     ),
                                   }}
-                                  title={`${assignment.title} · ${assignment.type} · ${dueLabel}`}
+                                  title={`${assignment.title} · ${course?.name ?? 'Course'} · ${assignment.type} · ${timeLabel}`}
                                 >
                                   <p className="truncate">
                                     {assignment.title}
                                   </p>
                                   <p className="truncate text-[11px] font-semibold text-blue-950/65">
-                                    {dueLabel}
+                                    {course?.name ?? 'Course'} · {timeLabel}
                                   </p>
                                 </div>
                               );
@@ -9497,7 +9509,7 @@ function WeeklyMobileAgenda({
                           <p className="text-xs font-semibold text-blue-950/65">
                             {assignment.type}
                             {assignment.dueTime
-                              ? ` · Due ${formatDueTime(assignment.dueTime)}`
+                              ? ` · ${assignmentTimeLabel(assignment)}`
                               : ''}
                           </p>
                         </div>
@@ -9554,6 +9566,7 @@ function WeeklyMobileAgenda({
             )
             .forEach((assignment) => {
               const course = courseById.get(assignment.courseId);
+              const timeLabel = assignmentTimeLabel(assignment);
               items.push({
                 id: `assignment-${assignment.id}`,
                 sort: assignmentDueTimeOutsideSchedule(
@@ -9578,10 +9591,7 @@ function WeeklyMobileAgenda({
                       {course?.name ?? 'Course'}
                     </p>
                     <p className="text-sm text-blue-950/70">
-                      Due{' '}
-                      {assignment.dueTime
-                        ? formatDueTime(assignment.dueTime)
-                        : formatMonthDay(assignment.dueDate)}
+                      {timeLabel}
                     </p>
                   </article>
                 ),
