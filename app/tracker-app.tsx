@@ -121,6 +121,14 @@ type OfficeHourBlock = {
   notes: string;
 };
 
+type DayOffEntry = {
+  id: string;
+  date: string;
+  title: string;
+  notes: string;
+  hideClasses: boolean;
+};
+
 type NoteEntry = {
   id: string;
   courseId: string;
@@ -299,6 +307,7 @@ type TrackerData = {
   assignments: Assignment[];
   schedule: ScheduleBlock[];
   officeHours: OfficeHourBlock[];
+  dayOffs: DayOffEntry[];
   notes: NoteEntry[];
   hours: HourEntry[];
   focusSessions: FocusSession[];
@@ -835,6 +844,7 @@ const createDefaultData = (baseDate = initialTemplateDate): TrackerData => ({
       notes: '',
     },
   ],
+  dayOffs: [],
   notes: [
     {
       id: 'note-1',
@@ -933,6 +943,14 @@ const blankOfficeHour = (courseId: string): OfficeHourBlock => ({
   teacher: '',
   office: '',
   notes: '',
+});
+
+const blankDayOff = (): DayOffEntry => ({
+  id: makeId(),
+  date: todayIso(),
+  title: 'Day off',
+  notes: '',
+  hideClasses: true,
 });
 
 const blankNote = (courseId: string): NoteEntry => ({
@@ -2663,6 +2681,7 @@ const parseAnnabelleExcelWorkbook = (
       assignments,
       schedule,
       officeHours: [],
+      dayOffs: [],
       notes: [],
       hours,
       focusSessions: [],
@@ -2723,6 +2742,23 @@ const normalizeSchedule = (schedule = defaultData.schedule): ScheduleBlock[] =>
     ...block,
     type: block.type ?? '',
   }));
+
+const normalizeDayOffs = (dayOffs = defaultData.dayOffs): DayOffEntry[] =>
+  dayOffs
+    .filter(
+      (entry) =>
+        entry &&
+        typeof entry.id === 'string' &&
+        typeof entry.date === 'string',
+    )
+    .map((entry) => ({
+      ...entry,
+      title: entry.title || 'Day off',
+      notes: entry.notes ?? '',
+      hideClasses:
+        typeof entry.hideClasses === 'boolean' ? entry.hideClasses : true,
+    }))
+    .sort((first, second) => first.date.localeCompare(second.date));
 
 const normalizeNotes = (notes = defaultData.notes): NoteEntry[] =>
   notes.map((note) => ({
@@ -2853,6 +2889,7 @@ const normalizeData = (incoming: Partial<TrackerData>): TrackerData => {
     ),
     schedule: normalizeSchedule(incoming.schedule),
     officeHours: incoming.officeHours ?? defaultData.officeHours,
+    dayOffs: normalizeDayOffs(incoming.dayOffs),
     notes: normalizeNotes(incoming.notes),
     hours: incoming.hours ?? defaultData.hours,
     focusSessions: normalizeFocusSessions(incoming.focusSessions),
@@ -3273,6 +3310,7 @@ export default function Home() {
   const [officeHourDraftDays, setOfficeHourDraftDays] = useState<string[]>([
     'Monday',
   ]);
+  const [dayOffDraft, setDayOffDraft] = useState<DayOffEntry>(blankDayOff());
   const [noteDraft, setNoteDraft] = useState<NoteEntry>(
     blankNote(defaultData.courses[0].id),
   );
@@ -3539,6 +3577,7 @@ export default function Home() {
         setShoppingDraft(blankShoppingItem(firstCourseId));
         setHomeworkDraft(blankHomeworkItem(firstCourseId));
         setTodoDraft(blankTodoItem());
+        setDayOffDraft(blankDayOff());
         setFocusCourseId(firstCourseId);
         setFocusAssignmentId('');
       }
@@ -4357,22 +4396,35 @@ export default function Home() {
       ),
     [data.notifications.morningBrief.assignmentLimit, upcomingAssignments],
   );
+  const todayDate = todayIso();
+  const dayOffByDate = useMemo(
+    () => new Map(data.dayOffs.map((entry) => [entry.date, entry])),
+    [data.dayOffs],
+  );
+  const todayDayOff = dayOffByDate.get(todayDate);
+  const isDateWithHiddenClasses = useCallback(
+    (date: string) => dayOffByDate.get(date)?.hideClasses ?? false,
+    [dayOffByDate],
+  );
   const todaysClasses = useMemo(
     () =>
       data.schedule
-        .filter((block) => block.day === todayDay)
+        .filter(
+          (block) =>
+            block.day === todayDay && !isDateWithHiddenClasses(todayDate),
+        )
         .sort((a, b) => a.start.localeCompare(b.start)),
-    [data.schedule, todayDay],
+    [data.schedule, isDateWithHiddenClasses, todayDate, todayDay],
   );
   const todayExamAssignments = useMemo(
     () =>
       data.assignments.filter(
         (assignment) =>
-          assignment.dueDate === todayIso() &&
+          assignment.dueDate === todayDate &&
           examAssignmentTypes.includes(assignment.type) &&
           !isAssignmentDone(assignment),
       ),
-    [data.assignments],
+    [data.assignments, todayDate],
   );
   const scheduleViewStartMinutes = useMemo(() => {
     const blocks = [...data.schedule, ...data.officeHours];
@@ -5271,6 +5323,25 @@ export default function Home() {
     });
   };
 
+  const addDayOff = () => {
+    if (!dayOffDraft.date) return;
+    const entry = {
+      ...dayOffDraft,
+      id: makeId(),
+      title: dayOffDraft.title.trim() || 'Day off',
+      notes: dayOffDraft.notes.trim(),
+    };
+
+    setData((current) => ({
+      ...current,
+      dayOffs: [
+        entry,
+        ...current.dayOffs.filter((dayOff) => dayOff.date !== entry.date),
+      ].sort((first, second) => first.date.localeCompare(second.date)),
+    }));
+    setDayOffDraft({ ...blankDayOff(), date: addIsoDays(entry.date, 1) });
+  };
+
   const addNote = () => {
     if (!noteDraft.title.trim() && !noteDraft.body.trim()) return;
     setData((current) => ({
@@ -5764,7 +5835,11 @@ export default function Home() {
                   {todayDay}
                 </span>
               </div>
-              <TodayClassList blocks={todaysClasses} courseById={courseById} />
+              <TodayClassList
+                blocks={todaysClasses}
+                courseById={courseById}
+                dayOff={todayDayOff}
+              />
             </section>
           </TabsContent>
 
@@ -5850,6 +5925,7 @@ export default function Home() {
                 assignments={weeklyAssignments}
                 schedule={data.schedule}
                 officeHours={data.officeHours}
+                dayOffByDate={dayOffByDate}
                 courseById={courseById}
                 showClasses={weeklyShowClasses}
                 showOfficeHours={weeklyShowOfficeHours}
@@ -5881,6 +5957,7 @@ export default function Home() {
                             !assignment.dueTime &&
                             assignment.dueDate === date &&
                             (!weeklyShowClasses ||
+                              isDateWithHiddenClasses(date) ||
                               !data.schedule.some(
                                 (block) =>
                                   block.day === day &&
@@ -5950,8 +6027,10 @@ export default function Home() {
                   </div>
                   {days.map((day, dayIndex) => {
                     const date = weeklyDates[dayIndex];
+                    const dayOff = dayOffByDate.get(date);
+                    const dayClassesHidden = isDateWithHiddenClasses(date);
                     const dayScheduleBlocks = data.schedule
-                      .filter((block) => block.day === day)
+                      .filter((block) => !dayClassesHidden && block.day === day)
                       .sort((a, b) => a.start.localeCompare(b.start));
                     const timedAssignments = weeklyAssignments.filter(
                       (assignment) => {
@@ -5990,6 +6069,32 @@ export default function Home() {
                         className="schedule-day-column relative border-r border-blue-200"
                         style={{ height: scheduleViewGridHeight }}
                       >
+                        {dayOff ? (
+                          <div
+                            className="pointer-events-none absolute inset-x-1 overflow-hidden border-2 border-blue-200 bg-purple-100 px-2 py-2 text-center text-blue-950"
+                            style={{
+                              ...scheduleBlockLayout(
+                                { start: '08:30', end: '16:00' },
+                                scheduleViewEndMinutes,
+                                scheduleViewStartMinutes,
+                              ),
+                            }}
+                          >
+                            <div className="flex h-full min-h-0 items-center justify-center">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-black">
+                                  {dayOff.title}
+                                </p>
+                                <p className="truncate text-xs font-semibold text-blue-950/65">
+                                  {dayOff.hideClasses
+                                    ? 'No regular classes'
+                                    : 'Calendar note'}
+                                  {dayOff.notes ? ` · ${dayOff.notes}` : ''}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                         {weeklyShowClasses
                           ? dayScheduleBlocks.map((block) => {
                               const course = courseById.get(block.courseId);
@@ -6135,7 +6240,7 @@ export default function Home() {
                               );
                             })
                           : null}
-                        {weeklyShowOfficeHours
+                        {weeklyShowOfficeHours && !dayClassesHidden
                           ? data.officeHours
                               .filter((block) => block.day === day)
                               .sort((a, b) => a.start.localeCompare(b.start))
@@ -8269,6 +8374,91 @@ export default function Home() {
                 <Plus data-icon="inline-start" />
                 Add block
               </Button>
+              <div className="mt-2 grid gap-2 border-2 border-blue-200 bg-blue-50/40 p-3">
+                <div>
+                  <h3 className="text-base font-black text-blue-950">
+                    Add Day Off
+                  </h3>
+                </div>
+                <Field label="Date">
+                  <TextInput
+                    type="date"
+                    value={dayOffDraft.date}
+                    onChange={(event) =>
+                      setDayOffDraft({
+                        ...dayOffDraft,
+                        date: event.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Label">
+                  <TextInput
+                    value={dayOffDraft.title}
+                    onChange={(event) =>
+                      setDayOffDraft({
+                        ...dayOffDraft,
+                        title: event.target.value,
+                      })
+                    }
+                    placeholder="Thanksgiving, Reading break..."
+                  />
+                </Field>
+                <Field label="Note">
+                  <TextInput
+                    value={dayOffDraft.notes}
+                    onChange={(event) =>
+                      setDayOffDraft({
+                        ...dayOffDraft,
+                        notes: event.target.value,
+                      })
+                    }
+                    placeholder="Optional"
+                  />
+                </Field>
+                <label className="flex items-start gap-2 text-sm font-semibold text-blue-950/70">
+                  <input
+                    type="checkbox"
+                    checked={dayOffDraft.hideClasses}
+                    onChange={(event) =>
+                      setDayOffDraft({
+                        ...dayOffDraft,
+                        hideClasses: event.target.checked,
+                      })
+                    }
+                  />
+                  Hide regular classes and office hours on this date
+                </label>
+                <Button onClick={addDayOff}>
+                  <Plus data-icon="inline-start" />
+                  Add day off
+                </Button>
+                {data.dayOffs.length ? (
+                  <div className="grid gap-1 pt-1">
+                    {data.dayOffs.slice(0, 5).map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex min-w-0 items-center justify-between gap-2 border border-blue-200 bg-white/70 px-2 py-1 text-xs font-semibold text-blue-950/70"
+                      >
+                        <span className="min-w-0 truncate">
+                          <span className="font-black text-blue-950">
+                            {formatMonthDay(entry.date)}
+                          </span>{' '}
+                          {entry.title}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Delete ${entry.title}`}
+                          className="shrink-0 text-red-500"
+                          onClick={() => removeItem('dayOffs', entry.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </section>
 
             <section className="pixel-panel min-w-0 overflow-hidden p-3 xl:p-4">
@@ -9415,6 +9605,7 @@ function WeeklyMobileAgenda({
   assignments,
   schedule,
   officeHours,
+  dayOffByDate,
   courseById,
   showClasses,
   showOfficeHours,
@@ -9427,6 +9618,7 @@ function WeeklyMobileAgenda({
   assignments: Assignment[];
   schedule: ScheduleBlock[];
   officeHours: OfficeHourBlock[];
+  dayOffByDate: Map<string, DayOffEntry>;
   courseById: Map<string, Course>;
   showClasses: boolean;
   showOfficeHours: boolean;
@@ -9438,11 +9630,13 @@ function WeeklyMobileAgenda({
     <div className="grid gap-3 md:hidden">
       {days.map((day, index) => {
         const date = weeklyDates[index];
+        const dayOff = dayOffByDate.get(date);
+        const hideClasses = dayOff?.hideClasses ?? false;
         const dayBlocks = schedule
-          .filter((block) => block.day === day)
+          .filter((block) => !hideClasses && block.day === day)
           .sort((first, second) => first.start.localeCompare(second.start));
         const dayOfficeHours = officeHours
-          .filter((block) => block.day === day)
+          .filter((block) => !hideClasses && block.day === day)
           .sort((first, second) => first.start.localeCompare(second.start));
         const attachedAssignmentIds = new Set<string>();
 
@@ -9452,7 +9646,27 @@ function WeeklyMobileAgenda({
           node: React.ReactNode;
         }[] = [];
 
-        if (showClasses) {
+        if (dayOff) {
+          items.push({
+            id: `day-off-${dayOff.id}`,
+            sort: '00:00',
+            node: (
+              <article className="grid min-w-0 gap-1 overflow-hidden border-2 border-blue-300 bg-amber-50 p-3 text-blue-950">
+                <p className="text-xs font-black uppercase text-blue-950/65">
+                  {dayOff.hideClasses ? 'No regular classes' : 'Calendar note'}
+                </p>
+                <h4 className="truncate font-black">{dayOff.title}</h4>
+                {dayOff.notes ? (
+                  <p className="text-sm font-semibold text-blue-950/70">
+                    {dayOff.notes}
+                  </p>
+                ) : null}
+              </article>
+            ),
+          });
+        }
+
+        if (showClasses && !hideClasses) {
           dayBlocks.forEach((block) => {
             const course = courseById.get(block.courseId);
             const attachedAssignments = showAssignments
@@ -9522,7 +9736,7 @@ function WeeklyMobileAgenda({
           });
         }
 
-        if (showOfficeHours) {
+        if (showOfficeHours && !hideClasses) {
           dayOfficeHours.forEach((block) => {
             const course = courseById.get(block.courseId);
             items.push({
@@ -10275,10 +10489,21 @@ function AssignmentPreviewList({
 function TodayClassList({
   blocks,
   courseById,
+  dayOff,
 }: {
   blocks: ScheduleBlock[];
   courseById: Map<string, Course>;
+  dayOff?: DayOffEntry;
 }) {
+  if (dayOff?.hideClasses) {
+    return (
+      <div className="border-2 border-blue-200 bg-amber-50 p-4 text-sm font-semibold text-blue-950/70">
+        <span className="font-black text-blue-950">{dayOff.title}</span>
+        {dayOff.notes ? ` · ${dayOff.notes}` : ''}. No regular classes today.
+      </div>
+    );
+  }
+
   if (blocks.length === 0) {
     return (
       <div className="border-2 border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-950/70">
